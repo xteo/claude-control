@@ -54,11 +54,27 @@ export const CODEX_MODELS: ModelOption[] = [
 ];
 
 export const CLAUDE_MODES: ModeOption[] = [
-  { value: "default", label: "Sandbox" },
+  { value: "sandbox-auto", label: "Sandbox" },
+  { value: "sandbox-ask", label: "Sandbox (Ask)" },
   { value: "bypassPermissions", label: "Agent" },
   { value: "plan", label: "Plan" },
   { value: "yolo", label: "YOLO" },
 ];
+
+/** Map a mode value to the sandbox mode for the CLI launcher. */
+export function getSandboxMode(modeValue: string): "off" | "auto-allow" | "ask-first" {
+  if (modeValue === "sandbox-auto") return "auto-allow";
+  if (modeValue === "sandbox-ask") return "ask-first";
+  return "off";
+}
+
+/** Map a mode value to the permission mode for the CLI launcher. */
+export function getPermissionMode(modeValue: string): string | undefined {
+  if (modeValue === "sandbox-auto") return "bypassPermissions";
+  if (modeValue === "sandbox-ask") return "default";
+  if (modeValue === "yolo") return "bypassPermissions";
+  return modeValue;
+}
 
 export const CODEX_MODES: ModeOption[] = [
   { value: "bypassPermissions", label: "Auto" },

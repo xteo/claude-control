@@ -216,6 +216,7 @@ export function Sidebar() {
       repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
       permCount: pendingPermissions.get(id)?.size ?? 0,
       dangerouslySkipPermissions: sdkInfo?.dangerouslySkipPermissions ?? false,
+      sandboxMode: sdkInfo?.sandboxMode ?? "off",
     };
   }).sort((a, b) => b.createdAt - a.createdAt);
 

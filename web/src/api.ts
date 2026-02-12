@@ -88,6 +88,8 @@ export interface CreateSessionOpts {
   container?: ContainerCreateOpts;
   /** YOLO mode: skip ALL permission checks for Claude sessions */
   dangerouslySkipPermissions?: boolean;
+  /** Claude sandbox mode: OS-level bash sandboxing */
+  sandboxMode?: "off" | "auto-allow" | "ask-first";
 }
 
 export interface BackendInfo {
