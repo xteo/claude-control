@@ -190,6 +190,7 @@ export function createRoutes(
         backendType: backend,
         worktreeInfo,
         dangerouslySkipPermissions: backend === "claude" && body.dangerouslySkipPermissions === true,
+        sandboxMode: backend === "claude" ? (body.sandboxMode || "off") : undefined,
       });
 
       // Re-track container with real session ID

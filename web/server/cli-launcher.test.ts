@@ -505,6 +505,62 @@ describe("launch", () => {
 
     expect(info.dangerouslySkipPermissions).toBeUndefined();
   });
+
+  it("passes --settings with sandbox config when sandboxMode is auto-allow", () => {
+    launcher.launch({
+      cwd: "/tmp/project",
+      sandboxMode: "auto-allow",
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    const settingsIdx = cmdAndArgs.indexOf("--settings");
+    expect(settingsIdx).toBeGreaterThan(-1);
+    const settingsJson = JSON.parse(cmdAndArgs[settingsIdx + 1]);
+    expect(settingsJson.sandbox.enabled).toBe(true);
+    expect(settingsJson.sandbox.autoAllowBashIfSandboxed).toBe(true);
+  });
+
+  it("passes --settings with sandbox config when sandboxMode is ask-first", () => {
+    launcher.launch({
+      cwd: "/tmp/project",
+      sandboxMode: "ask-first",
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    const settingsIdx = cmdAndArgs.indexOf("--settings");
+    expect(settingsIdx).toBeGreaterThan(-1);
+    const settingsJson = JSON.parse(cmdAndArgs[settingsIdx + 1]);
+    expect(settingsJson.sandbox.enabled).toBe(true);
+    expect(settingsJson.sandbox.autoAllowBashIfSandboxed).toBe(false);
+  });
+
+  it("does not pass --settings when sandboxMode is off", () => {
+    launcher.launch({
+      cwd: "/tmp/project",
+      sandboxMode: "off",
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    expect(cmdAndArgs).not.toContain("--settings");
+  });
+
+  it("stores sandboxMode on session info", () => {
+    const info = launcher.launch({
+      cwd: "/tmp/project",
+      sandboxMode: "auto-allow",
+    });
+
+    expect(info.sandboxMode).toBe("auto-allow");
+  });
+
+  it("does not store sandboxMode when off", () => {
+    const info = launcher.launch({
+      cwd: "/tmp/project",
+      sandboxMode: "off",
+    });
+
+    expect(info.sandboxMode).toBeUndefined();
+  });
 });
 
 // ─── state management ────────────────────────────────────────────────────────

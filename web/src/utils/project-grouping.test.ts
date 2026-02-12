@@ -26,6 +26,7 @@ function makeItem(overrides: Partial<SessionItem> = {}): SessionItem {
     repoRoot: "",
     permCount: 0,
     dangerouslySkipPermissions: false,
+    sandboxMode: "off",
     ...overrides,
   };
 }

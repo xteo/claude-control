@@ -5,7 +5,7 @@ import { connectSession, waitForConnection, sendToSession } from "../ws.js";
 import { disconnectSession } from "../ws.js";
 import { generateUniqueSessionName } from "../utils/names.js";
 import { getRecentDirs, addRecentDir } from "../utils/recent-dirs.js";
-import { getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, type ModelOption } from "../utils/backends.js";
+import { getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, getSandboxMode, getPermissionMode, type ModelOption } from "../utils/backends.js";
 import type { BackendType } from "../types.js";
 import { EnvManager } from "./EnvManager.js";
 import { FolderPicker } from "./FolderPicker.js";
@@ -286,9 +286,11 @@ export function HomePage() {
       // Create session (with optional worktree)
       const branchName = worktreeBranch.trim() || undefined;
       const isYolo = backend === "claude" && mode === "yolo";
+      const sandboxMode = backend === "claude" ? getSandboxMode(mode) : undefined;
+      const permissionMode = backend === "claude" ? getPermissionMode(mode) : mode;
       const result = await api.createSession({
         model,
-        permissionMode: isYolo ? "bypassPermissions" : mode,
+        permissionMode,
         cwd: cwd || undefined,
         envSlug: selectedEnv || undefined,
         branch: branchName,
@@ -297,6 +299,7 @@ export function HomePage() {
         backend,
         codexInternetAccess: backend === "codex" ? codexInternetAccess : undefined,
         dangerouslySkipPermissions: isYolo || undefined,
+        sandboxMode,
       });
       const sessionId = result.sessionId;
 
@@ -430,6 +433,20 @@ export function HomePage() {
           className="hidden"
         />
 
+        {/* Sandbox mode info banner */}
+        {mode.startsWith("sandbox-") && backend === "claude" && (
+          <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-green-500/8 border border-green-500/15">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0">
+              <path d="M8 1a3.5 3.5 0 00-3.5 3.5V6H3a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V7a1 1 0 00-1-1h-1.5V4.5A3.5 3.5 0 008 1zm2 5V4.5a2 2 0 10-4 0V6h4z" />
+            </svg>
+            <p className="text-[11px] text-green-600 dark:text-green-400 font-medium">
+              {mode === "sandbox-auto"
+                ? "Sandbox — bash commands are isolated and auto-approved"
+                : "Sandbox — bash commands are isolated, permissions required"}
+            </p>
+          </div>
+        )}
+
         {/* YOLO mode active warning */}
         {mode === "yolo" && backend === "claude" && (
           <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
@@ -467,7 +484,7 @@ export function HomePage() {
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
                   mode === "yolo"
                     ? "text-red-500 bg-red-500/10 hover:bg-red-500/15"
-                    : mode === "default"
+                    : mode.startsWith("sandbox-")
                       ? "text-green-600 dark:text-green-400 bg-green-500/10 hover:bg-green-500/15"
                       : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
                 }`}
@@ -476,7 +493,7 @@ export function HomePage() {
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                     <path d="M8.982 1.566a1.13 1.13 0 00-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 01-1.1 0L7.1 5.995A.905.905 0 018 5zm.002 6a1 1 0 110 2 1 1 0 010-2z" />
                   </svg>
-                ) : mode === "default" ? (
+                ) : mode.startsWith("sandbox-") ? (
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                     <path d="M8 1a3.5 3.5 0 00-3.5 3.5V6H3a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V7a1 1 0 00-1-1h-1.5V4.5A3.5 3.5 0 008 1zm2 5V4.5a2 2 0 10-4 0V6h4z" />
                   </svg>
@@ -508,7 +525,7 @@ export function HomePage() {
                         m.value === mode ? "text-cc-primary font-medium" : m.value === "yolo" ? "text-red-500" : "text-cc-fg"
                       }`}
                     >
-                      {m.value === "default" && (
+                      {m.value.startsWith("sandbox-") && (
                         <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-green-600 dark:text-green-400 shrink-0">
                           <path d="M8 1a3.5 3.5 0 00-3.5 3.5V6H3a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V7a1 1 0 00-1-1h-1.5V4.5A3.5 3.5 0 008 1zm2 5V4.5a2 2 0 10-4 0V6h4z" />
                         </svg>
@@ -519,7 +536,7 @@ export function HomePage() {
                         </svg>
                       )}
                       <span>{m.label}</span>
-                      {m.value === "default" && (
+                      {m.value === "sandbox-auto" && (
                         <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/15 text-green-600 dark:text-green-400 ml-auto shrink-0">safe</span>
                       )}
                       {m.value === "yolo" && (
