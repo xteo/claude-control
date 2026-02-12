@@ -904,11 +904,11 @@ export function Playground() {
                       <span className="text-[10px] bg-cc-primary/10 text-cc-primary px-1 rounded">worktree</span>
                     </span>
                     <span className="flex items-center gap-0.5 text-[10px]">
-                      <span className="text-green-500">3&#8593;</span>
+                      <span className="text-cc-success">3&#8593;</span>
                     </span>
                     <span className="flex items-center gap-1 shrink-0">
-                      <span className="text-green-500">+142</span>
-                      <span className="text-red-400">-38</span>
+                      <span className="text-cc-success">+142</span>
+                      <span className="text-cc-error">-38</span>
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-2.5 pb-2.5">

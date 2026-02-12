@@ -19,6 +19,10 @@
   --color-cc-success: #2d7d46;
   --color-cc-error: #c53030;
   --color-cc-warning: #b7791f;
+  --color-cc-info: #3b82f6;
+  --color-cc-accent: #5BA8A0;
+  --color-cc-black: #000000;
+  --color-cc-gray: #71717a;
 }
 
 @keyframes fadeSlideIn {
@@ -86,6 +90,10 @@
   --color-cc-success: #48bb78;
   --color-cc-error: #fc8181;
   --color-cc-warning: #f6e05e;
+  --color-cc-info: #60a5fa;
+  --color-cc-accent: #6BC4BB;
+  --color-cc-black: #ffffff;
+  --color-cc-gray: #a1a1aa;
 }
 
 /* Scrollbar styling */
