@@ -70,8 +70,8 @@ export function SessionItem({
 
   // Backend pill colors
   const pillColors = s.backendType === "codex"
-    ? "text-blue-500 bg-blue-500/10"
-    : "text-[#5BA8A0] bg-[#5BA8A0]/10";
+    ? "text-cc-info bg-cc-info/10"
+    : "text-cc-accent bg-cc-accent/10";
 
   return (
     <div className={`relative group ${archived ? "opacity-50" : ""}`}>
@@ -91,8 +91,8 @@ export function SessionItem({
         <span
           className={`absolute left-0 top-2 bottom-2 w-[2px] rounded-full ${
             s.backendType === "codex"
-              ? "bg-blue-500"
-              : "bg-[#5BA8A0]"
+              ? "bg-cc-info"
+              : "bg-cc-accent"
           } ${isActive ? "opacity-100" : "opacity-40 group-hover:opacity-70"} transition-opacity`}
         />
 
@@ -176,14 +176,14 @@ export function SessionItem({
               <div className="flex items-center gap-1.5 mt-px text-[10px] text-cc-muted">
                 {(s.gitAhead > 0 || s.gitBehind > 0) && (
                   <span className="flex items-center gap-0.5">
-                    {s.gitAhead > 0 && <span className="text-green-500">{s.gitAhead}&#8593;</span>}
+                    {s.gitAhead > 0 && <span className="text-cc-success">{s.gitAhead}&#8593;</span>}
                     {s.gitBehind > 0 && <span className="text-cc-warning">{s.gitBehind}&#8595;</span>}
                   </span>
                 )}
                 {(s.linesAdded > 0 || s.linesRemoved > 0) && (
                   <span className="flex items-center gap-1 shrink-0">
-                    <span className="text-green-500">+{s.linesAdded}</span>
-                    <span className="text-red-400">-{s.linesRemoved}</span>
+                    <span className="text-cc-success">+{s.linesAdded}</span>
+                    <span className="text-cc-error">-{s.linesRemoved}</span>
                   </span>
                 )}
               </div>
@@ -214,7 +214,7 @@ export function SessionItem({
           </button>
           <button
             onClick={(e) => onDelete(e, s.id)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-cc-border text-cc-muted hover:text-red-400 transition-all cursor-pointer"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-cc-border text-cc-muted hover:text-cc-error transition-all cursor-pointer"
             title="Delete permanently"
           >
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
