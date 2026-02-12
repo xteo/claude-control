@@ -48,7 +48,7 @@ deploy:
     - flyctl deploy --remote-only
   environment:
     name: production
-    url: https://vibe-companion.fly.dev
+    url: https://claude-control.fly.dev
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   variables:

@@ -1,4 +1,4 @@
-app = "vibe-companion"
+app = "claude-control"
 primary_region = "iad"
 
 kill_signal = "SIGTERM"
@@ -11,6 +11,7 @@ swap_size_mb = 512
 [env]
   NODE_ENV = "production"
   PORT = "3456"
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
 
 [http_service]
   internal_port = 3456
