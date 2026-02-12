@@ -54,8 +54,10 @@ export const CODEX_MODELS: ModelOption[] = [
 ];
 
 export const CLAUDE_MODES: ModeOption[] = [
+  { value: "default", label: "Sandbox" },
   { value: "bypassPermissions", label: "Agent" },
   { value: "plan", label: "Plan" },
+  { value: "yolo", label: "YOLO" },
 ];
 
 export const CODEX_MODES: ModeOption[] = [

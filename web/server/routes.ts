@@ -189,6 +189,7 @@ export function createRoutes(
         env: envVars,
         backendType: backend,
         worktreeInfo,
+        dangerouslySkipPermissions: backend === "claude" && body.dangerouslySkipPermissions === true,
       });
 
       // Re-track container with real session ID

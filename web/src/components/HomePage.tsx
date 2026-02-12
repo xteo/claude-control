@@ -51,6 +51,7 @@ export function HomePage() {
   const [codexInternetAccess, setCodexInternetAccess] = useState(() =>
     localStorage.getItem("cc-codex-internet-access") === "1",
   );
+  const [showYoloConfirm, setShowYoloConfirm] = useState(false);
 
   const MODELS = dynamicModels || getModelsForBackend(backend);
   const MODES = getModesForBackend(backend);
@@ -284,9 +285,10 @@ export function HomePage() {
 
       // Create session (with optional worktree)
       const branchName = worktreeBranch.trim() || undefined;
+      const isYolo = backend === "claude" && mode === "yolo";
       const result = await api.createSession({
         model,
-        permissionMode: mode,
+        permissionMode: isYolo ? "bypassPermissions" : mode,
         cwd: cwd || undefined,
         envSlug: selectedEnv || undefined,
         branch: branchName,
@@ -294,6 +296,7 @@ export function HomePage() {
         useWorktree: useWorktree || undefined,
         backend,
         codexInternetAccess: backend === "codex" ? codexInternetAccess : undefined,
+        dangerouslySkipPermissions: isYolo || undefined,
       });
       const sessionId = result.sessionId;
 
@@ -427,8 +430,22 @@ export function HomePage() {
           className="hidden"
         />
 
+        {/* YOLO mode active warning */}
+        {mode === "yolo" && backend === "claude" && (
+          <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-red-500 shrink-0">
+              <path d="M8.982 1.566a1.13 1.13 0 00-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 01-1.1 0L7.1 5.995A.905.905 0 018 5zm.002 6a1 1 0 110 2 1 1 0 010-2z" />
+            </svg>
+            <p className="text-[11px] text-red-500 font-medium">
+              YOLO mode — all permissions auto-approved, no safety prompts
+            </p>
+          </div>
+        )}
+
         {/* Input card */}
-        <div className="bg-cc-card border border-cc-border rounded-[14px] shadow-sm overflow-hidden">
+        <div className={`bg-cc-card border rounded-[14px] shadow-sm overflow-hidden ${
+          mode === "yolo" && backend === "claude" ? "border-red-500/30" : "border-cc-border"
+        }`}>
           <textarea
             ref={textareaRef}
             value={text}
@@ -447,27 +464,67 @@ export function HomePage() {
             <div className="relative" ref={modeDropdownRef}>
               <button
                 onClick={() => setShowModeDropdown(!showModeDropdown)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-cc-muted hover:text-cc-fg rounded-lg hover:bg-cc-hover transition-colors cursor-pointer"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+                  mode === "yolo"
+                    ? "text-red-500 bg-red-500/10 hover:bg-red-500/15"
+                    : mode === "default"
+                      ? "text-green-600 dark:text-green-400 bg-green-500/10 hover:bg-green-500/15"
+                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+                }`}
               >
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
-                  <path d="M2 4h12M2 8h8M2 12h10" strokeLinecap="round" />
-                </svg>
+                {mode === "yolo" ? (
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M8.982 1.566a1.13 1.13 0 00-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 01-1.1 0L7.1 5.995A.905.905 0 018 5zm.002 6a1 1 0 110 2 1 1 0 010-2z" />
+                  </svg>
+                ) : mode === "default" ? (
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M8 1a3.5 3.5 0 00-3.5 3.5V6H3a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V7a1 1 0 00-1-1h-1.5V4.5A3.5 3.5 0 008 1zm2 5V4.5a2 2 0 10-4 0V6h4z" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                    <path d="M2 4h12M2 8h8M2 12h10" strokeLinecap="round" />
+                  </svg>
+                )}
                 {selectedMode.label}
                 <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-50">
                   <path d="M4 6l4 4 4-4" />
                 </svg>
               </button>
               {showModeDropdown && (
-                <div className="absolute left-0 bottom-full mb-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
+                <div className="absolute left-0 bottom-full mb-1 w-48 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
                   {MODES.map((m) => (
                     <button
                       key={m.value}
-                      onClick={() => { setMode(m.value); setShowModeDropdown(false); }}
-                      className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
-                        m.value === mode ? "text-cc-primary font-medium" : "text-cc-fg"
+                      onClick={() => {
+                        if (m.value === "yolo") {
+                          setShowYoloConfirm(true);
+                          setShowModeDropdown(false);
+                        } else {
+                          setMode(m.value);
+                          setShowModeDropdown(false);
+                        }
+                      }}
+                      className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer flex items-center gap-2 ${
+                        m.value === mode ? "text-cc-primary font-medium" : m.value === "yolo" ? "text-red-500" : "text-cc-fg"
                       }`}
                     >
-                      {m.label}
+                      {m.value === "default" && (
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-green-600 dark:text-green-400 shrink-0">
+                          <path d="M8 1a3.5 3.5 0 00-3.5 3.5V6H3a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V7a1 1 0 00-1-1h-1.5V4.5A3.5 3.5 0 008 1zm2 5V4.5a2 2 0 10-4 0V6h4z" />
+                        </svg>
+                      )}
+                      {m.value === "yolo" && (
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-red-500 shrink-0">
+                          <path d="M8.982 1.566a1.13 1.13 0 00-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 01-1.1 0L7.1 5.995A.905.905 0 018 5zm.002 6a1 1 0 110 2 1 1 0 010-2z" />
+                        </svg>
+                      )}
+                      <span>{m.label}</span>
+                      {m.value === "default" && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/15 text-green-600 dark:text-green-400 ml-auto shrink-0">safe</span>
+                      )}
+                      {m.value === "yolo" && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/15 text-red-500 ml-auto shrink-0">danger</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -908,6 +965,58 @@ export function HomePage() {
           </div>
         )}
       </div>
+
+      {/* YOLO mode confirmation dialog */}
+      {showYoloConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-cc-card border border-cc-border rounded-2xl shadow-2xl w-[400px] max-w-[90vw] overflow-hidden">
+            <div className="px-5 pt-5 pb-3">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-red-500/15">
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-5 h-5 text-red-500">
+                    <path d="M8.982 1.566a1.13 1.13 0 00-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 01-1.1 0L7.1 5.995A.905.905 0 018 5zm.002 6a1 1 0 110 2 1 1 0 010-2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-cc-fg">Enable YOLO Mode?</h3>
+                  <p className="text-[11px] text-cc-muted mt-0.5">This disables all safety checks</p>
+                </div>
+              </div>
+              <div className="space-y-2 text-xs text-cc-muted leading-relaxed">
+                <p>
+                  YOLO mode uses <code className="text-[10px] px-1 py-0.5 rounded bg-cc-hover font-mono-code">--dangerously-skip-permissions</code> to
+                  skip <strong className="text-cc-fg">all</strong> permission prompts.
+                </p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>Claude can run <strong className="text-cc-fg">any command</strong> without asking</li>
+                  <li>File writes, deletes, and installs happen <strong className="text-cc-fg">automatically</strong></li>
+                  <li>No opportunity to review or reject tool calls</li>
+                </ul>
+                <p className="text-red-500/80 font-medium">
+                  Only use this in disposable environments or when you fully trust the task.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 px-5 py-3 border-t border-cc-border bg-cc-hover/30">
+              <button
+                onClick={() => setShowYoloConfirm(false)}
+                className="flex-1 px-3 py-2 text-xs font-medium rounded-lg bg-cc-hover text-cc-fg hover:bg-cc-border transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setMode("yolo");
+                  setShowYoloConfirm(false);
+                }}
+                className="flex-1 px-3 py-2 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors cursor-pointer"
+              >
+                Enable YOLO Mode
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Environment manager modal */}
       {showEnvManager && (

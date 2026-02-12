@@ -18,6 +18,7 @@ export interface SessionItem {
   backendType: "claude" | "codex";
   repoRoot: string;
   permCount: number;
+  dangerouslySkipPermissions: boolean;
 }
 
 export interface ProjectGroup {
