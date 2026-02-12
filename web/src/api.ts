@@ -86,6 +86,8 @@ export interface CreateSessionOpts {
   useWorktree?: boolean;
   backend?: "claude" | "codex";
   container?: ContainerCreateOpts;
+  /** YOLO mode: skip ALL permission checks for Claude sessions */
+  dangerouslySkipPermissions?: boolean;
 }
 
 export interface BackendInfo {

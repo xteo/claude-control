@@ -144,6 +144,11 @@ export function SessionItem({
                   <span className={`text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 ${pillColors}`}>
                     {s.backendType === "codex" ? "Codex" : "Claude"}
                   </span>
+                  {s.dangerouslySkipPermissions && (
+                    <span className="text-[8px] font-bold px-1 rounded-full leading-[14px] shrink-0 bg-red-500/15 text-red-500">
+                      YOLO
+                    </span>
+                  )}
                 </>
               )}
             </div>

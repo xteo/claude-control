@@ -57,6 +57,8 @@ export interface SdkSessionInfo {
   codexInternetAccess?: boolean;
   /** Sandbox mode selected for Codex sessions */
   codexSandbox?: "workspace-write" | "danger-full-access";
+  /** Whether this session runs with --dangerously-skip-permissions (YOLO mode) */
+  dangerouslySkipPermissions?: boolean;
 }
 
 export interface LaunchOptions {
@@ -74,6 +76,8 @@ export interface LaunchOptions {
   codexInternetAccess?: boolean;
   /** Optional override for CODEX_HOME used by Codex sessions. */
   codexHome?: string;
+  /** Skip ALL permission checks (YOLO mode). Passes --dangerously-skip-permissions to Claude CLI. */
+  dangerouslySkipPermissions?: boolean;
   /** Pre-resolved worktree info from the session creation flow */
   worktreeInfo?: {
     isWorktree: boolean;
@@ -176,6 +180,10 @@ export class CliLauncher {
       info.codexSandbox = options.codexSandbox;
     }
 
+    if (options.dangerouslySkipPermissions) {
+      info.dangerouslySkipPermissions = true;
+    }
+
     // Store worktree metadata if provided
     if (options.worktreeInfo) {
       info.isWorktree = options.worktreeInfo.isWorktree;
@@ -235,6 +243,7 @@ export class CliLauncher {
         permissionMode: info.permissionMode,
         cwd: info.cwd,
         resumeSessionId: info.cliSessionId,
+        dangerouslySkipPermissions: info.dangerouslySkipPermissions,
       });
     }
     return true;
@@ -247,7 +256,7 @@ export class CliLauncher {
     return Array.from(this.sessions.values()).filter((s) => s.state === "starting");
   }
 
-  private spawnCLI(sessionId: string, info: SdkSessionInfo, options: LaunchOptions & { resumeSessionId?: string }): void {
+  private spawnCLI(sessionId: string, info: SdkSessionInfo, options: LaunchOptions & { resumeSessionId?: string; dangerouslySkipPermissions?: boolean }): void {
     let binary = options.claudeBinary || "claude";
     const resolved = resolveBinary(binary);
     if (resolved) {
@@ -273,7 +282,9 @@ export class CliLauncher {
     if (options.model) {
       args.push("--model", options.model);
     }
-    if (options.permissionMode) {
+    if (info.dangerouslySkipPermissions) {
+      args.push("--dangerously-skip-permissions");
+    } else if (options.permissionMode) {
       args.push("--permission-mode", options.permissionMode);
     }
     if (options.allowedTools) {
