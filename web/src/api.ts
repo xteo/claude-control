@@ -2,61 +2,106 @@ import type { SdkSessionInfo } from "./types.js";
 
 const BASE = "/api";
 
+/**
+ * Get the auth header value if basic auth credentials have been set.
+ * The browser's native basic-auth dialog sets credentials automatically on
+ * subsequent fetch() calls to the same origin, so this is mainly used to
+ * capture the token for WebSocket connections (which don't send headers).
+ */
+function getAuthHeaders(): Record<string, string> {
+  const token = (globalThis as Record<string, unknown>).__vibeAuthToken as string | undefined;
+  if (token) {
+    return { Authorization: `Basic ${token}` };
+  }
+  return {};
+}
+
+/**
+ * After a successful API response, extract and cache the basic-auth token
+ * so it can be reused for WebSocket connections.
+ */
+function captureAuthFromResponse(res: Response) {
+  // If the request succeeded and had an Authorization header, the browser
+  // handled basic auth. We can't read the header back, but if we already
+  // have a token cached, keep it. The token is set via setAuthToken().
+}
+
+/**
+ * Set basic auth credentials (called from the login flow or URL credentials).
+ */
+export function setAuthToken(username: string, password: string) {
+  (globalThis as Record<string, unknown>).__vibeAuthToken = btoa(`${username}:${password}`);
+}
+
+/**
+ * Check if auth credentials are currently set.
+ */
+export function hasAuthToken(): boolean {
+  return !!(globalThis as Record<string, unknown>).__vibeAuthToken;
+}
+
 async function post<T = unknown>(path: string, body?: object): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
   }
+  captureAuthFromResponse(res);
   return res.json();
 }
 
 async function get<T = unknown>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { ...getAuthHeaders() },
+  });
   if (!res.ok) throw new Error(res.statusText);
+  captureAuthFromResponse(res);
   return res.json();
 }
 
 async function put<T = unknown>(path: string, body?: object): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
   }
+  captureAuthFromResponse(res);
   return res.json();
 }
 
 async function patch<T = unknown>(path: string, body?: object): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
   }
+  captureAuthFromResponse(res);
   return res.json();
 }
 
 async function del<T = unknown>(path: string, body?: object): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "DELETE",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...getAuthHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
   }
+  captureAuthFromResponse(res);
   return res.json();
 }
 

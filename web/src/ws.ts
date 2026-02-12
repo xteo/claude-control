@@ -97,7 +97,15 @@ function nextId(): string {
 
 function getWsUrl(sessionId: string): string {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}/ws/browser/${sessionId}`;
+  const base = `${proto}//${location.host}/ws/browser/${sessionId}`;
+  // If basic auth credentials are cached (set after a successful /api call),
+  // pass them as a query param so the WebSocket upgrade is authenticated.
+  // Browsers don't reliably send the Authorization header on WS upgrade.
+  const token = (globalThis as Record<string, unknown>).__vibeAuthToken as string | undefined;
+  if (token) {
+    return `${base}?token=${encodeURIComponent(token)}`;
+  }
+  return base;
 }
 
 function extractTextFromBlocks(blocks: ContentBlock[]): string {

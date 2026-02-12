@@ -1,0 +1,12 @@
+node_modules
+web/node_modules
+web/dist
+.git
+*.md
+.env*
+landing/
+scripts/
+.husky/
+docs/
+.vscode/
+.github/

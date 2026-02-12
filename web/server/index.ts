@@ -14,6 +14,7 @@ import { generateSessionTitle } from "./auto-namer.js";
 import * as sessionNames from "./session-names.js";
 import { startPeriodicCheck, setServiceMode } from "./update-checker.js";
 import { isRunningAsService } from "./service.js";
+import { validateBasicAuth, basicAuthMiddleware } from "./auth.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { ServerWebSocket } from "bun";
 
@@ -83,7 +84,16 @@ console.log(`[server] Session persistence: ${sessionStore.directory}`);
 
 const app = new Hono();
 
+// Health check — before auth so Fly.io proxy can reach it
+app.get("/health", (c) => c.json({ status: "ok" }));
+
+// CORS must come before auth for preflight requests
 app.use("/api/*", cors());
+
+// Basic Auth middleware (no-op when AUTH_USERNAME/AUTH_PASSWORD are not set)
+app.use("/api/*", basicAuthMiddleware());
+app.use("/*", basicAuthMiddleware());
+
 app.route("/api", createRoutes(launcher, wsBridge, sessionStore, worktreeTracker));
 
 // In production, serve built frontend using absolute path (works when installed as npm package)
@@ -112,6 +122,18 @@ const server = Bun.serve<SocketData>({
     // ── Browser WebSocket — connects to a specific session ─────────────
     const browserMatch = url.pathname.match(/^\/ws\/browser\/([a-f0-9-]+)$/);
     if (browserMatch) {
+      // Validate auth before upgrading — check Authorization header first,
+      // then fall back to ?token= query param (browsers may send the header
+      // automatically after a native basic-auth dialog prompt).
+      const authHeader = req.headers.get("Authorization");
+      const tokenParam = url.searchParams.get("token");
+      if (!validateBasicAuth(authHeader, tokenParam)) {
+        return new Response("Unauthorized", {
+          status: 401,
+          headers: { "WWW-Authenticate": 'Basic realm="Vibe Companion"' },
+        });
+      }
+
       const sessionId = browserMatch[1];
       const upgraded = server.upgrade(req, {
         data: { kind: "browser" as const, sessionId },
