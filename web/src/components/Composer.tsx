@@ -350,10 +350,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
               </span>
               {((sessionData.git_ahead || 0) > 0 || (sessionData.git_behind || 0) > 0) && (
                 <span className="flex items-center gap-0.5 text-[10px]">
-                  {(sessionData.git_ahead || 0) > 0 && <span className="text-green-500">{sessionData.git_ahead}&#8593;</span>}
+                  {(sessionData.git_ahead || 0) > 0 && <span className="text-cc-success">{sessionData.git_ahead}&#8593;</span>}
                   {(sessionData.git_behind || 0) > 0 && (
                     <button
-                      className="text-cc-warning hover:text-amber-400 cursor-pointer hover:underline"
+                      className="text-cc-warning hover:text-cc-warning/80 cursor-pointer hover:underline"
                       title="Pull latest changes"
                       onClick={() => {
                         const cwd = sessionData.repo_root || sessionData.cwd;
@@ -374,8 +374,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
               )}
               {((sessionData.total_lines_added || 0) > 0 || (sessionData.total_lines_removed || 0) > 0) && (
                 <span className="flex items-center gap-1 shrink-0">
-                  <span className="text-green-500">+{sessionData.total_lines_added || 0}</span>
-                  <span className="text-red-400">-{sessionData.total_lines_removed || 0}</span>
+                  <span className="text-cc-success">+{sessionData.total_lines_added || 0}</span>
+                  <span className="text-cc-error">-{sessionData.total_lines_removed || 0}</span>
                 </span>
               )}
             </div>

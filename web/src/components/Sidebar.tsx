@@ -258,9 +258,9 @@ export function Sidebar() {
 
       {/* Worktree archive confirmation */}
       {confirmArchiveId && (
-        <div className="mx-2 mb-1 p-2.5 rounded-[10px] bg-amber-500/10 border border-amber-500/20">
+        <div className="mx-2 mb-1 p-2.5 rounded-[10px] bg-cc-warning/10 border border-cc-warning/20">
           <div className="flex items-start gap-2">
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-amber-500 shrink-0 mt-0.5">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-warning shrink-0 mt-0.5">
               <path d="M8.982 1.566a1.13 1.13 0 00-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 01-1.1 0L7.1 5.995A.905.905 0 018 5zm.002 6a1 1 0 110 2 1 1 0 010-2z" />
             </svg>
             <div className="flex-1 min-w-0">
@@ -276,7 +276,7 @@ export function Sidebar() {
                 </button>
                 <button
                   onClick={confirmArchive}
-                  className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors cursor-pointer"
+                  className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-cc-error/10 text-cc-error hover:bg-cc-error/20 transition-colors cursor-pointer"
                 >
                   Archive
                 </button>
