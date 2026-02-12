@@ -121,6 +121,7 @@ export function createRoutes(
         env: envVars,
         backendType: backend,
         worktreeInfo,
+        dangerouslySkipPermissions: backend === "claude" && body.dangerouslySkipPermissions === true,
       });
 
       // Track the worktree mapping

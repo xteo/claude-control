@@ -127,4 +127,19 @@ describe("static model/mode lists", () => {
     expect(CLAUDE_MODES.length).toBeGreaterThanOrEqual(2);
     expect(CODEX_MODES.length).toBeGreaterThanOrEqual(2);
   });
+
+  it("claude modes include sandbox (default) as first option", () => {
+    expect(CLAUDE_MODES[0].value).toBe("default");
+    expect(CLAUDE_MODES[0].label).toBe("Sandbox");
+  });
+
+  it("claude modes include yolo mode", () => {
+    const yolo = CLAUDE_MODES.find((m) => m.value === "yolo");
+    expect(yolo).toBeDefined();
+    expect(yolo!.label).toBe("YOLO");
+  });
+
+  it("claude default mode is sandbox (default)", () => {
+    expect(getDefaultMode("claude")).toBe("default");
+  });
 });

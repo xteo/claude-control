@@ -390,6 +390,60 @@ describe("launch", () => {
     expect(cmdAndArgs).toContain("-c");
     expect(cmdAndArgs).toContain("tools.webSearch=false");
   });
+
+  it("passes --dangerously-skip-permissions when dangerouslySkipPermissions=true", () => {
+    launcher.launch({
+      cwd: "/tmp/project",
+      dangerouslySkipPermissions: true,
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    expect(cmdAndArgs).toContain("--dangerously-skip-permissions");
+    // Should NOT pass --permission-mode when YOLO is active
+    expect(cmdAndArgs).not.toContain("--permission-mode");
+  });
+
+  it("does not pass --dangerously-skip-permissions when dangerouslySkipPermissions=false", () => {
+    launcher.launch({
+      cwd: "/tmp/project",
+      permissionMode: "default",
+      dangerouslySkipPermissions: false,
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    expect(cmdAndArgs).not.toContain("--dangerously-skip-permissions");
+    expect(cmdAndArgs).toContain("--permission-mode");
+    expect(cmdAndArgs).toContain("default");
+  });
+
+  it("prefers --dangerously-skip-permissions over --permission-mode when both provided", () => {
+    launcher.launch({
+      cwd: "/tmp/project",
+      permissionMode: "plan",
+      dangerouslySkipPermissions: true,
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    expect(cmdAndArgs).toContain("--dangerously-skip-permissions");
+    expect(cmdAndArgs).not.toContain("--permission-mode");
+  });
+
+  it("stores dangerouslySkipPermissions on session info", () => {
+    const info = launcher.launch({
+      cwd: "/tmp/project",
+      dangerouslySkipPermissions: true,
+    });
+
+    expect(info.dangerouslySkipPermissions).toBe(true);
+  });
+
+  it("does not set dangerouslySkipPermissions when not provided", () => {
+    const info = launcher.launch({
+      cwd: "/tmp/project",
+    });
+
+    expect(info.dangerouslySkipPermissions).toBeUndefined();
+  });
 });
 
 // ─── state management ────────────────────────────────────────────────────────

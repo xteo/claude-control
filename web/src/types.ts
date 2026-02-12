@@ -53,4 +53,6 @@ export interface SdkSessionInfo {
   gitBehind?: number;
   totalLinesAdded?: number;
   totalLinesRemoved?: number;
+  /** Whether this session runs with --dangerously-skip-permissions (YOLO mode) */
+  dangerouslySkipPermissions?: boolean;
 }

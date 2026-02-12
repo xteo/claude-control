@@ -1083,6 +1083,49 @@ describe("POST /api/sessions/create with backend", () => {
   });
 });
 
+// ─── Session creation with YOLO mode ──────────────────────────────────────────
+
+describe("POST /api/sessions/create with YOLO mode", () => {
+  it("passes dangerouslySkipPermissions to launcher for claude backend", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", dangerouslySkipPermissions: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ dangerouslySkipPermissions: true }),
+    );
+  });
+
+  it("ignores dangerouslySkipPermissions for codex backend", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", backend: "codex", dangerouslySkipPermissions: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ dangerouslySkipPermissions: false }),
+    );
+  });
+
+  it("defaults dangerouslySkipPermissions to false when not provided", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ dangerouslySkipPermissions: false }),
+    );
+  });
+});
+
 // ─── Per-session usage limits ─────────────────────────────────────────────────
 
 describe("GET /api/sessions/:id/usage-limits", () => {
