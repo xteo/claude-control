@@ -1126,6 +1126,49 @@ describe("POST /api/sessions/create with YOLO mode", () => {
   });
 });
 
+// ─── Session creation with sandbox mode ──────────────────────────────────────
+
+describe("POST /api/sessions/create with sandbox mode", () => {
+  it("passes sandboxMode to launcher for claude backend", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", sandboxMode: "auto-allow" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ sandboxMode: "auto-allow" }),
+    );
+  });
+
+  it("ignores sandboxMode for codex backend", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", backend: "codex", sandboxMode: "auto-allow" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ sandboxMode: undefined }),
+    );
+  });
+
+  it("defaults sandboxMode to off when not provided", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ sandboxMode: "off" }),
+    );
+  });
+});
+
 // ─── Per-session usage limits ─────────────────────────────────────────────────
 
 describe("GET /api/sessions/:id/usage-limits", () => {

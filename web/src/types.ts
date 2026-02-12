@@ -55,4 +55,6 @@ export interface SdkSessionInfo {
   totalLinesRemoved?: number;
   /** Whether this session runs with --dangerously-skip-permissions (YOLO mode) */
   dangerouslySkipPermissions?: boolean;
+  /** Claude sandbox mode: OS-level bash sandboxing */
+  sandboxMode?: "off" | "auto-allow" | "ask-first";
 }

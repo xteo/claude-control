@@ -47,6 +47,8 @@ export interface SdkSessionInfo {
   codexSandbox?: "workspace-write" | "danger-full-access";
   /** Whether this session runs with --dangerously-skip-permissions (YOLO mode) */
   dangerouslySkipPermissions?: boolean;
+  /** Claude sandbox mode: OS-level bash sandboxing via bubblewrap/Seatbelt */
+  sandboxMode?: "off" | "auto-allow" | "ask-first";
 }
 
 export interface LaunchOptions {
@@ -64,6 +66,8 @@ export interface LaunchOptions {
   codexInternetAccess?: boolean;
   /** Skip ALL permission checks (YOLO mode). Passes --dangerously-skip-permissions to Claude CLI. */
   dangerouslySkipPermissions?: boolean;
+  /** Claude sandbox mode: OS-level bash sandboxing. "auto-allow" auto-approves sandboxed bash, "ask-first" still prompts. */
+  sandboxMode?: "off" | "auto-allow" | "ask-first";
   /** Pre-resolved worktree info from the session creation flow */
   worktreeInfo?: {
     isWorktree: boolean;
@@ -170,6 +174,10 @@ export class CliLauncher {
       info.dangerouslySkipPermissions = true;
     }
 
+    if (options.sandboxMode && options.sandboxMode !== "off") {
+      info.sandboxMode = options.sandboxMode;
+    }
+
     // Store worktree metadata if provided
     if (options.worktreeInfo) {
       info.isWorktree = options.worktreeInfo.isWorktree;
@@ -230,6 +238,7 @@ export class CliLauncher {
         cwd: info.cwd,
         resumeSessionId: info.cliSessionId,
         dangerouslySkipPermissions: info.dangerouslySkipPermissions,
+        sandboxMode: info.sandboxMode,
       });
     }
     return true;
@@ -242,7 +251,7 @@ export class CliLauncher {
     return Array.from(this.sessions.values()).filter((s) => s.state === "starting");
   }
 
-  private spawnCLI(sessionId: string, info: SdkSessionInfo, options: LaunchOptions & { resumeSessionId?: string; dangerouslySkipPermissions?: boolean }): void {
+  private spawnCLI(sessionId: string, info: SdkSessionInfo, options: LaunchOptions & { resumeSessionId?: string; dangerouslySkipPermissions?: boolean; sandboxMode?: "off" | "auto-allow" | "ask-first" }): void {
     let binary = options.claudeBinary || "claude";
     if (!binary.startsWith("/")) {
       try {
@@ -274,6 +283,18 @@ export class CliLauncher {
       for (const tool of options.allowedTools) {
         args.push("--allowedTools", tool);
       }
+    }
+
+    // Pass sandbox settings via --settings when sandbox mode is enabled
+    const sandboxMode = info.sandboxMode || options.sandboxMode;
+    if (sandboxMode && sandboxMode !== "off") {
+      const sandboxSettings = JSON.stringify({
+        sandbox: {
+          enabled: true,
+          autoAllowBashIfSandboxed: sandboxMode === "auto-allow",
+        },
+      });
+      args.push("--settings", sandboxSettings);
     }
 
     // Inject CLAUDE.md guardrails for worktree sessions

@@ -19,6 +19,7 @@ export interface SessionItem {
   repoRoot: string;
   permCount: number;
   dangerouslySkipPermissions: boolean;
+  sandboxMode: "off" | "auto-allow" | "ask-first";
 }
 
 export interface ProjectGroup {

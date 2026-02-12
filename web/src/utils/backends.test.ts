@@ -5,6 +5,8 @@ import {
   getModesForBackend,
   getDefaultModel,
   getDefaultMode,
+  getSandboxMode,
+  getPermissionMode,
   CLAUDE_MODELS,
   CODEX_MODELS,
   CLAUDE_MODES,
@@ -128,9 +130,15 @@ describe("static model/mode lists", () => {
     expect(CODEX_MODES.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("claude modes include sandbox (default) as first option", () => {
-    expect(CLAUDE_MODES[0].value).toBe("default");
+  it("claude modes include sandbox-auto as first option", () => {
+    expect(CLAUDE_MODES[0].value).toBe("sandbox-auto");
     expect(CLAUDE_MODES[0].label).toBe("Sandbox");
+  });
+
+  it("claude modes include sandbox-ask option", () => {
+    const ask = CLAUDE_MODES.find((m) => m.value === "sandbox-ask");
+    expect(ask).toBeDefined();
+    expect(ask!.label).toBe("Sandbox (Ask)");
   });
 
   it("claude modes include yolo mode", () => {
@@ -139,7 +147,45 @@ describe("static model/mode lists", () => {
     expect(yolo!.label).toBe("YOLO");
   });
 
-  it("claude default mode is sandbox (default)", () => {
-    expect(getDefaultMode("claude")).toBe("default");
+  it("claude default mode is sandbox-auto", () => {
+    expect(getDefaultMode("claude")).toBe("sandbox-auto");
+  });
+});
+
+describe("getSandboxMode", () => {
+  it("returns auto-allow for sandbox-auto", () => {
+    expect(getSandboxMode("sandbox-auto")).toBe("auto-allow");
+  });
+
+  it("returns ask-first for sandbox-ask", () => {
+    expect(getSandboxMode("sandbox-ask")).toBe("ask-first");
+  });
+
+  it("returns off for other modes", () => {
+    expect(getSandboxMode("bypassPermissions")).toBe("off");
+    expect(getSandboxMode("plan")).toBe("off");
+    expect(getSandboxMode("yolo")).toBe("off");
+  });
+});
+
+describe("getPermissionMode", () => {
+  it("returns bypassPermissions for sandbox-auto", () => {
+    expect(getPermissionMode("sandbox-auto")).toBe("bypassPermissions");
+  });
+
+  it("returns default for sandbox-ask", () => {
+    expect(getPermissionMode("sandbox-ask")).toBe("default");
+  });
+
+  it("returns bypassPermissions for yolo", () => {
+    expect(getPermissionMode("yolo")).toBe("bypassPermissions");
+  });
+
+  it("returns plan for plan mode", () => {
+    expect(getPermissionMode("plan")).toBe("plan");
+  });
+
+  it("returns bypassPermissions for agent mode", () => {
+    expect(getPermissionMode("bypassPermissions")).toBe("bypassPermissions");
   });
 });
