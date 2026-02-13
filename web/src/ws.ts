@@ -580,9 +580,14 @@ export function connectSession(sessionId: string) {
 
   ws.onmessage = (event) => handleMessage(sessionId, event);
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     sockets.delete(sessionId);
     useStore.getState().setConnectionStatus(sessionId, "disconnected");
+    // Code 1006 = abnormal closure (upgrade rejected by server, e.g. auth failure)
+    if (event.code === 1006) {
+      window.dispatchEvent(new CustomEvent("companion:auth-expired"));
+      return; // Don't reconnect — user needs to re-authenticate
+    }
     scheduleReconnect(sessionId);
   };
 

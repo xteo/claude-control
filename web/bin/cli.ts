@@ -22,6 +22,7 @@ Commands:
   uninstall   Remove the background service
   status      Show service status
   logs        Tail service log files
+  auth        Manage authentication (setup, reset)
   help        Show this help message
 
 Options:
@@ -107,6 +108,56 @@ switch (command) {
   case "restart": {
     const { restart } = await import("../server/service.js");
     await restart();
+    break;
+  }
+
+  case "auth": {
+    const subcommand = process.argv[3];
+    const { isAuthConfigured, setupCredentials, _resetForTest } = await import("../server/auth-manager.js");
+
+    if (subcommand === "setup") {
+      if (isAuthConfigured()) {
+        console.error("Auth is already configured. Use 'the-companion auth reset' to start over.");
+        process.exit(1);
+      }
+      // Read username and password interactively
+      process.stdout.write("Username: ");
+      const username = (await new Response(Bun.stdin.stream()).text()).trim().split("\n")[0];
+      if (!username) { console.error("Username is required."); process.exit(1); }
+
+      process.stdout.write("Password (min 8 chars): ");
+      const password = (await new Response(Bun.stdin.stream()).text()).trim().split("\n")[0];
+      if (!password || password.length < 8) {
+        console.error("Password must be at least 8 characters.");
+        process.exit(1);
+      }
+
+      await setupCredentials(username, password);
+      console.log(`\nAuth configured for user "${username}".`);
+      console.log("Remote users will now need to log in via the web UI.");
+    } else if (subcommand === "reset") {
+      const { join } = await import("node:path");
+      const { homedir } = await import("node:os");
+      const { unlinkSync, existsSync } = await import("node:fs");
+      const authPath = join(homedir(), ".companion", "auth.json");
+      if (existsSync(authPath)) {
+        unlinkSync(authPath);
+        console.log("Auth credentials removed. The app is now open (no login required).");
+      } else {
+        console.log("No auth credentials found. Nothing to reset.");
+      }
+    } else if (subcommand === "status") {
+      console.log(isAuthConfigured() ? "Auth is configured." : "Auth is not configured.");
+    } else {
+      console.log(`
+Usage: the-companion auth <subcommand>
+
+Subcommands:
+  setup     Create username and password for web access
+  reset     Remove credentials (makes app open/unauthenticated)
+  status    Check if auth is configured
+`);
+    }
     break;
   }
 

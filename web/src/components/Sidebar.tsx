@@ -443,6 +443,19 @@ export function Sidebar() {
           </svg>
           <span>Settings</span>
         </button>
+        <button
+          onClick={() => {
+            api.authLogout().then(() => {
+              window.dispatchEvent(new CustomEvent("companion:auth-expired"));
+            }).catch(() => {});
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-sm text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+            <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V3zm9.293 4.293a1 1 0 011.414 0l2 2a1 1 0 010 1.414l-2 2a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414zM7 9a1 1 0 100 2h4a1 1 0 100-2H7z" clipRule="evenodd" />
+          </svg>
+          <span>Sign out</span>
+        </button>
       </div>
     </aside>
   );

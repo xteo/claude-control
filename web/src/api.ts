@@ -3,6 +3,12 @@ import { captureEvent, captureException } from "./analytics.js";
 
 const BASE = "/api";
 
+function check401(res: Response): void {
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent("companion:auth-expired"));
+  }
+}
+
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
     return performance.now();
@@ -45,6 +51,7 @@ async function post<T = unknown>(path: string, body?: object): Promise<T> {
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
+    check401(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       const apiError = new Error(err.error || res.statusText);
@@ -67,6 +74,7 @@ async function get<T = unknown>(path: string): Promise<T> {
   let failureTracked = false;
   try {
     const res = await fetch(`${BASE}${path}`);
+    check401(res);
     if (!res.ok) {
       const apiError = new Error(res.statusText);
       trackApiFailure("GET", path, nowMs() - startedAt, apiError, res.status);
@@ -92,6 +100,7 @@ async function put<T = unknown>(path: string, body?: object): Promise<T> {
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
+    check401(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       const apiError = new Error(err.error || res.statusText);
@@ -118,6 +127,7 @@ async function patch<T = unknown>(path: string, body?: object): Promise<T> {
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
+    check401(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       const apiError = new Error(err.error || res.statusText);
@@ -144,6 +154,7 @@ async function del<T = unknown>(path: string, body?: object): Promise<T> {
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
+    check401(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       const apiError = new Error(err.error || res.statusText);
@@ -329,6 +340,14 @@ export interface PRStatusResponse {
 }
 
 export const api = {
+  // Auth
+  authStatus: () => get<{ configured: boolean; authenticated: boolean }>("/auth/status"),
+  authLogin: (username: string, password: string) =>
+    post("/auth/login", { username, password }),
+  authLogout: () => post("/auth/logout"),
+  authChangePassword: (currentPassword: string, newPassword: string) =>
+    post("/auth/change-password", { currentPassword, newPassword }),
+
   createSession: (opts?: CreateSessionOpts) =>
     post<{ sessionId: string; state: string; cwd: string }>(
       "/sessions/create",
