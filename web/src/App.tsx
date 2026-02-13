@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useStore } from "./store.js";
 import { connectSession } from "./ws.js";
 import { api } from "./api.js";
@@ -12,6 +12,7 @@ import { UpdateBanner } from "./components/UpdateBanner.js";
 import { SettingsPage } from "./components/SettingsPage.js";
 import { EnvManager } from "./components/EnvManager.js";
 import { TerminalPage } from "./components/TerminalPage.js";
+import { LoginPage } from "./components/LoginPage.js";
 
 function useHash() {
   return useSyncExternalStore(
@@ -33,20 +34,42 @@ export default function App() {
   const isEnvironmentsPage = hash === "#/environments";
   const isSessionView = !isSettingsPage && !isTerminalPage && !isEnvironmentsPage;
 
+  // ── Auth gate ──────────────────────────────────────────────────────
+  const [authState, setAuthState] = useState<"loading" | "setup" | "login" | "authenticated">("loading");
+
+  useEffect(() => {
+    api.authStatus()
+      .then(({ configured, authenticated }) => {
+        if (!configured) setAuthState("setup");
+        else if (!authenticated) setAuthState("login");
+        else setAuthState("authenticated");
+      })
+      .catch(() => setAuthState("authenticated")); // If auth endpoint unavailable, assume no auth
+  }, []);
+
+  // Listen for 401 / auth-expired events
+  useEffect(() => {
+    const handler = () => setAuthState("login");
+    window.addEventListener("companion:auth-expired", handler);
+    return () => window.removeEventListener("companion:auth-expired", handler);
+  }, []);
+
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
 
-  // Auto-connect to restored session on mount
+  // Auto-connect to restored session on mount (only when authenticated)
   useEffect(() => {
+    if (authState !== "authenticated") return;
     const restoredId = useStore.getState().currentSessionId;
     if (restoredId) {
       connectSession(restoredId);
     }
-  }, []);
+  }, [authState]);
 
-  // Poll for updates
+  // Poll for updates (only when authenticated)
   useEffect(() => {
+    if (authState !== "authenticated") return;
     const check = () => {
       api.checkForUpdate().then((info) => {
         useStore.getState().setUpdateInfo(info);
@@ -55,7 +78,32 @@ export default function App() {
     check();
     const interval = setInterval(check, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [authState]);
+
+  // Auth screens — render before any app content
+  if (authState === "loading") {
+    return <div className="h-[100dvh] flex items-center justify-center bg-cc-bg text-cc-muted font-sans-ui antialiased" />;
+  }
+  if (authState === "setup") {
+    return (
+      <div className="h-[100dvh] flex items-center justify-center bg-cc-bg text-cc-fg font-sans-ui antialiased">
+        <div className="w-full max-w-sm mx-4">
+          <div className="bg-cc-card border border-cc-border rounded-xl p-6 sm:p-8 text-center">
+            <h1 className="text-lg font-semibold mb-2">Authentication Required</h1>
+            <p className="text-sm text-cc-muted mb-4">
+              Credentials have not been configured yet. Run the following command on the server to set up authentication:
+            </p>
+            <code className="block px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg font-mono">
+              the-companion auth setup
+            </code>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (authState === "login") {
+    return <LoginPage onSuccess={() => setAuthState("authenticated")} />;
+  }
 
   if (hash === "#/playground") {
     return <Playground />;

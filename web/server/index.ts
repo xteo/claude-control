@@ -23,6 +23,9 @@ import { getSettings } from "./settings-manager.js";
 import { PRPoller } from "./pr-poller.js";
 import { startPeriodicCheck, setServiceMode } from "./update-checker.js";
 import { isRunningAsService } from "./service.js";
+import { createAuthRoutes } from "./auth-routes.js";
+import { authMiddleware, validateWsCookie } from "./auth-middleware.js";
+import { isAuthConfigured } from "./auth-manager.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { ServerWebSocket } from "bun";
 
@@ -100,6 +103,8 @@ console.log(`[server] Session persistence: ${sessionStore.directory}`);
 const app = new Hono();
 
 app.use("/api/*", cors());
+app.route("/api/auth", createAuthRoutes());
+app.use("/api/*", authMiddleware());
 app.route("/api", createRoutes(launcher, wsBridge, sessionStore, worktreeTracker, terminalManager, prPoller));
 
 // In production, serve built frontend using absolute path (works when installed as npm package)
@@ -128,6 +133,9 @@ const server = Bun.serve<SocketData>({
     // ── Browser WebSocket — connects to a specific session ─────────────
     const browserMatch = url.pathname.match(/^\/ws\/browser\/([a-f0-9-]+)$/);
     if (browserMatch) {
+      if (isAuthConfigured() && !validateWsCookie(req)) {
+        return new Response("Unauthorized", { status: 401 });
+      }
       const sessionId = browserMatch[1];
       const upgraded = server.upgrade(req, {
         data: { kind: "browser" as const, sessionId },
@@ -139,6 +147,9 @@ const server = Bun.serve<SocketData>({
     // ── Terminal WebSocket — embedded terminal PTY connection ─────────
     const termMatch = url.pathname.match(/^\/ws\/terminal\/([a-f0-9-]+)$/);
     if (termMatch) {
+      if (isAuthConfigured() && !validateWsCookie(req)) {
+        return new Response("Unauthorized", { status: 401 });
+      }
       const terminalId = termMatch[1];
       const upgraded = server.upgrade(req, {
         data: { kind: "terminal" as const, terminalId },

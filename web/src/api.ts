@@ -2,12 +2,19 @@ import type { SdkSessionInfo } from "./types.js";
 
 const BASE = "/api";
 
+function check401(res: Response): void {
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent("companion:auth-expired"));
+  }
+}
+
 async function post<T = unknown>(path: string, body?: object): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
+  check401(res);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
@@ -17,6 +24,7 @@ async function post<T = unknown>(path: string, body?: object): Promise<T> {
 
 async function get<T = unknown>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
+  check401(res);
   if (!res.ok) throw new Error(res.statusText);
   return res.json();
 }
@@ -27,6 +35,7 @@ async function put<T = unknown>(path: string, body?: object): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
+  check401(res);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
@@ -40,6 +49,7 @@ async function patch<T = unknown>(path: string, body?: object): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
+  check401(res);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
@@ -53,6 +63,7 @@ async function del<T = unknown>(path: string, body?: object): Promise<T> {
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
+  check401(res);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
@@ -219,6 +230,14 @@ export interface PRStatusResponse {
 }
 
 export const api = {
+  // Auth
+  authStatus: () => get<{ configured: boolean; authenticated: boolean }>("/auth/status"),
+  authLogin: (username: string, password: string) =>
+    post("/auth/login", { username, password }),
+  authLogout: () => post("/auth/logout"),
+  authChangePassword: (currentPassword: string, newPassword: string) =>
+    post("/auth/change-password", { currentPassword, newPassword }),
+
   createSession: (opts?: CreateSessionOpts) =>
     post<{ sessionId: string; state: string; cwd: string }>(
       "/sessions/create",
