@@ -11,3 +11,14 @@ web/dist/
 web/.env.local
 .dev-*.pid
 .dev-*.log
+.playwright-mcp/
+# Screenshot artifacts (not upstream PWA icons or docs)
+/collection-created.png
+/current-state.png
+/enhanced-diff-panel.png
+/main-app-view.png
+web/dark-mode-diffs.png
+web/diffs-view.png
+web/main-view.png
+web/playground-top.png
+web/session-view.png
