@@ -621,6 +621,82 @@ export function createRoutes(
     }
   });
 
+  /** Parse git numstat + name-status output into structured stats */
+  function parseGitStats(
+    numstat: string,
+    nameStatus: string,
+  ): Array<{ file: string; additions: number; deletions: number; status: string }> {
+    const statusMap = new Map<string, string>();
+    for (const line of nameStatus.trim().split("\n")) {
+      if (!line) continue;
+      const [st, ...rest] = line.split("\t");
+      const file = rest.join("\t");
+      if (file) statusMap.set(file, st);
+    }
+
+    const stats: Array<{ file: string; additions: number; deletions: number; status: string }> = [];
+    for (const line of numstat.trim().split("\n")) {
+      if (!line) continue;
+      const [add, del, ...rest] = line.split("\t");
+      const file = rest.join("\t");
+      if (!file) continue;
+      stats.push({
+        file,
+        additions: add === "-" ? 0 : parseInt(add, 10) || 0,
+        deletions: del === "-" ? 0 : parseInt(del, 10) || 0,
+        status: statusMap.get(file) || "M",
+      });
+    }
+    return stats;
+  }
+
+  /** Git diff for all uncommitted changes (vs HEAD) */
+  api.get("/fs/diff-all", (c) => {
+    const cwd = c.req.query("cwd");
+    if (!cwd) return c.json({ error: "cwd required" }, 400);
+    const absCwd = resolve(cwd);
+    try {
+      const diff = execSync("git diff HEAD", { cwd: absCwd, encoding: "utf-8", timeout: 10000, maxBuffer: 10 * 1024 * 1024 });
+      const numstat = execSync("git diff HEAD --numstat", { cwd: absCwd, encoding: "utf-8", timeout: 5000 });
+      const nameStatus = execSync("git diff HEAD --name-status", { cwd: absCwd, encoding: "utf-8", timeout: 5000 });
+      return c.json({ diff, stats: parseGitStats(numstat, nameStatus) });
+    } catch {
+      return c.json({ diff: "", stats: [] });
+    }
+  });
+
+  /** Git diff for branch changes (vs merge-base with main/master) */
+  api.get("/fs/branch-diff", (c) => {
+    const cwd = c.req.query("cwd");
+    if (!cwd) return c.json({ error: "cwd required" }, 400);
+    const absCwd = resolve(cwd);
+    try {
+      // Detect default branch
+      let baseBranch = "main";
+      try {
+        const remote = execSync("git remote", { cwd: absCwd, encoding: "utf-8", timeout: 3000 }).trim().split("\n")[0] || "origin";
+        const head = execSync(`git symbolic-ref refs/remotes/${remote}/HEAD`, { cwd: absCwd, encoding: "utf-8", timeout: 3000 }).trim();
+        baseBranch = head.replace(`refs/remotes/${remote}/`, "");
+      } catch {
+        // Fallback: try main, then master
+        try {
+          execSync("git rev-parse --verify main", { cwd: absCwd, encoding: "utf-8", timeout: 3000 });
+          baseBranch = "main";
+        } catch {
+          baseBranch = "master";
+        }
+      }
+
+      const mergeBase = execSync(`git merge-base HEAD ${baseBranch}`, { cwd: absCwd, encoding: "utf-8", timeout: 5000 }).trim();
+      const diff = execSync(`git diff ${mergeBase}...HEAD`, { cwd: absCwd, encoding: "utf-8", timeout: 10000, maxBuffer: 10 * 1024 * 1024 });
+      const numstat = execSync(`git diff ${mergeBase}...HEAD --numstat`, { cwd: absCwd, encoding: "utf-8", timeout: 5000 });
+      const nameStatus = execSync(`git diff ${mergeBase}...HEAD --name-status`, { cwd: absCwd, encoding: "utf-8", timeout: 5000 });
+      return c.json({ diff, stats: parseGitStats(numstat, nameStatus), baseBranch });
+    } catch {
+      return c.json({ diff: "", stats: [], baseBranch: "main" });
+    }
+  });
+
   // ─── Environments (~/.companion/envs/) ────────────────────────────
 
   api.get("/envs", (c) => {

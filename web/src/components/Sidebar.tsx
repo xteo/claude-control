@@ -1,10 +1,15 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { connectSession, connectAllSessions, disconnectSession } from "../ws.js";
 import { ProjectGroup } from "./ProjectGroup.js";
 import { SessionItem } from "./SessionItem.js";
-import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
+import { CollectionGroup } from "./CollectionGroup.js";
+import { CreateCollectionButton } from "./CreateCollectionButton.js";
+import { useSidebarGroups } from "../collections/use-sidebar-groups.js";
+import { useCollectionsStore } from "../collections/store.js";
+import { hasDraggedSession, getSessionDragData } from "../collections/drag-reorder.js";
+import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 
 export function Sidebar() {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -225,11 +230,10 @@ export function Sidebar() {
   const currentSession = currentSessionId ? allSessionList.find((s) => s.id === currentSessionId) : null;
   const logoSrc = currentSession?.backendType === "codex" ? "/logo-codex.svg" : "/logo.svg";
 
-  // Group active sessions by project
-  const projectGroups = useMemo(
-    () => groupSessionsByProject(activeSessions),
-    [activeSessions],
-  );
+  // Group active sessions: collections first, then ungrouped by project
+  const { collectionGroups, ungroupedProjectGroups } = useSidebarGroups(activeSessions);
+  const collapsedCollections = useCollectionsStore((s) => s.collapsedCollections);
+  const unassignSession = useCollectionsStore((s) => s.unassignSession);
 
   // Shared props for SessionItem / ProjectGroup
   const sessionItemProps = {
@@ -252,7 +256,7 @@ export function Sidebar() {
       <div className="p-4 pb-3">
         <div className="flex items-center gap-2 mb-4">
           <img src={logoSrc} alt="" className="w-7 h-7" />
-          <span className="text-sm font-semibold text-cc-fg tracking-tight">The Companion</span>
+          <span className="text-sm font-semibold text-cc-fg tracking-tight">Claude Mission Control</span>
         </div>
 
         <button
@@ -298,13 +302,48 @@ export function Sidebar() {
 
       {/* Session list */}
       <div className="flex-1 overflow-y-auto px-2 pb-2">
-        {activeSessions.length === 0 && archivedSessions.length === 0 ? (
+        {/* Collection groups */}
+        {collectionGroups.map((cg) => (
+          <CollectionGroup
+            key={cg.collection.id}
+            collection={cg.collection}
+            sessions={cg.sessions}
+            isCollapsed={collapsedCollections.has(cg.collection.id)}
+            currentSessionId={currentSessionId}
+            sessionNames={sessionNames}
+            pendingPermissions={pendingPermissions}
+            recentlyRenamed={recentlyRenamed}
+            {...sessionItemProps}
+          />
+        ))}
+
+        <CreateCollectionButton />
+
+        {/* Separator between collections and ungrouped */}
+        {collectionGroups.length > 0 && ungroupedProjectGroups.length > 0 && (
+          <div className="my-1 border-t border-cc-border"
+            onDragOver={(e) => {
+              if (hasDraggedSession(e)) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const sessionId = getSessionDragData(e);
+              if (sessionId) unassignSession(sessionId);
+            }}
+          />
+        )}
+
+        {/* Ungrouped project groups or empty state */}
+        {activeSessions.length === 0 && archivedSessions.length === 0 && collectionGroups.length === 0 ? (
           <p className="px-3 py-8 text-xs text-cc-muted text-center leading-relaxed">
             No sessions yet.
           </p>
         ) : (
           <>
-            {projectGroups.map((group, i) => (
+            {ungroupedProjectGroups.map((group, i) => (
               <ProjectGroup
                 key={group.key}
                 group={group}
@@ -314,7 +353,7 @@ export function Sidebar() {
                 sessionNames={sessionNames}
                 pendingPermissions={pendingPermissions}
                 recentlyRenamed={recentlyRenamed}
-                isFirst={i === 0}
+                isFirst={collectionGroups.length === 0 && i === 0}
                 {...sessionItemProps}
               />
             ))}

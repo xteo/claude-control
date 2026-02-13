@@ -145,6 +145,13 @@ interface AppState {
   openTerminal: (cwd: string) => void;
   closeTerminal: () => void;
 
+  // Enhanced diff panel
+  diffScope: Map<string, "uncommitted" | "branch" | "last_turn">;
+  lastTurnChangedFiles: Map<string, Set<string>>;
+  setDiffScope: (sessionId: string, scope: "uncommitted" | "branch" | "last_turn") => void;
+  setLastTurnChangedFiles: (sessionId: string, files: Set<string>) => void;
+  clearLastTurnChangedFiles: (sessionId: string) => void;
+
   reset: () => void;
 }
 
@@ -230,6 +237,8 @@ export const useStore = create<AppState>((set) => ({
   terminalOpen: false,
   terminalCwd: null,
   terminalId: null,
+  diffScope: new Map(),
+  lastTurnChangedFiles: new Map(),
 
   setDarkMode: (v) => {
     localStorage.setItem("cc-dark-mode", String(v));
@@ -330,6 +339,10 @@ export const useStore = create<AppState>((set) => ({
       mcpServers.delete(sessionId);
       const prStatus = new Map(s.prStatus);
       prStatus.delete(sessionId);
+      const diffScope = new Map(s.diffScope);
+      diffScope.delete(sessionId);
+      const lastTurnChangedFiles = new Map(s.lastTurnChangedFiles);
+      lastTurnChangedFiles.delete(sessionId);
       localStorage.setItem("cc-session-names", JSON.stringify(Array.from(sessionNames.entries())));
       if (s.currentSessionId === sessionId) {
         localStorage.removeItem("cc-current-session");
@@ -352,6 +365,8 @@ export const useStore = create<AppState>((set) => ({
         diffPanelSelectedFile,
         mcpServers,
         prStatus,
+        diffScope,
+        lastTurnChangedFiles,
         sdkSessions: s.sdkSessions.filter((sdk) => sdk.sessionId !== sessionId),
         currentSessionId: s.currentSessionId === sessionId ? null : s.currentSessionId,
       };
@@ -583,6 +598,27 @@ export const useStore = create<AppState>((set) => ({
   openTerminal: (cwd) => set({ terminalOpen: true, terminalCwd: cwd }),
   closeTerminal: () => set({ terminalOpen: false, terminalCwd: null, terminalId: null }),
 
+  setDiffScope: (sessionId, scope) =>
+    set((s) => {
+      const diffScope = new Map(s.diffScope);
+      diffScope.set(sessionId, scope);
+      return { diffScope };
+    }),
+
+  setLastTurnChangedFiles: (sessionId, files) =>
+    set((s) => {
+      const lastTurnChangedFiles = new Map(s.lastTurnChangedFiles);
+      lastTurnChangedFiles.set(sessionId, files);
+      return { lastTurnChangedFiles };
+    }),
+
+  clearLastTurnChangedFiles: (sessionId) =>
+    set((s) => {
+      const lastTurnChangedFiles = new Map(s.lastTurnChangedFiles);
+      lastTurnChangedFiles.delete(sessionId);
+      return { lastTurnChangedFiles };
+    }),
+
   reset: () =>
     set({
       sessions: new Map(),
@@ -608,5 +644,7 @@ export const useStore = create<AppState>((set) => ({
       terminalOpen: false,
       terminalCwd: null,
       terminalId: null,
+      diffScope: new Map(),
+      lastTurnChangedFiles: new Map(),
     }),
 }));

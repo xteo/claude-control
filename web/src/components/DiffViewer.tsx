@@ -37,6 +37,7 @@ function parsePatchToHunks(oldText: string, newText: string): DiffHunk[] {
     let newLine = hunk.newStart;
 
     for (const raw of hunk.lines) {
+      if (raw === "\\ No newline at end of file") continue;
       const prefix = raw[0];
       const content = raw.slice(1);
       if (prefix === "-") {

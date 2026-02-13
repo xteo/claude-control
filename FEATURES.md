@@ -1,6 +1,6 @@
 # Feature Specifications
 
-This document details the four upcoming features for the Vibe Companion, based on a thorough review of the current codebase.
+This document details the four upcoming features for Claude Mission Control, based on a thorough review of the current codebase.
 
 ---
 
@@ -17,7 +17,7 @@ This document details the four upcoming features for the Vibe Companion, based o
 
 ### Current State
 
-The Vibe Companion has **zero official Anthropic SDK dependency**. The entire Claude Code integration is reverse-engineered against the undocumented `--sdk-url` WebSocket flag on the CLI.
+Claude Mission Control has **zero official Anthropic SDK dependency**. The entire Claude Code integration is reverse-engineered against the undocumented `--sdk-url` WebSocket flag on the CLI.
 
 ### How It Works
 

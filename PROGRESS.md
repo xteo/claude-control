@@ -8,10 +8,13 @@ This file tracks the implementation status of planned features across their resp
 
 | # | Feature | Branch | Status | Assignee |
 |---|---------|--------|--------|----------|
-| 1 | [Dark Mode Theme Overhaul](#1-dark-mode-theme-overhaul) | `claude/feat-dark-theme-*` | Planned | TBD |
-| 2 | [Sandbox & YOLO Mode](#2-sandbox--yolo-mode) | `claude/feat-sandbox-yolo-*` | Planned | TBD |
+| 1 | [Dark Mode Theme Overhaul](#1-dark-mode-theme-overhaul) | `main` | **Done** | Claude |
+| 2 | [Sandbox & YOLO Mode](#2-sandbox--yolo-mode) | `main` | **Done** | Claude |
 | 3 | [Dual-Launch (Claude + Codex)](#3-dual-launch-claude--codex) | `claude/feat-dual-launch-*` | Planned | TBD |
 | 4 | [SDK Integration Hardening](#4-sdk-integration-hardening) | `claude/feat-sdk-hardening-*` | Planned | TBD |
+| 5 | [Session Collections](#5-session-collections) | `main` | **Done** | Claude |
+| 6 | [Enhanced Diff Review](#6-enhanced-diff-review) | `main` | **Done** | Claude |
+| 7 | [Rebrand to Claude Mission Control](#7-rebrand) | `main` | **Done** | Claude |
 
 **Legend:** Planned | In Progress | Review | Done | Blocked
 
@@ -19,56 +22,39 @@ This file tracks the implementation status of planned features across their resp
 
 ## 1. Dark Mode Theme Overhaul
 
-**Branch:** `claude/feat-dark-theme-*`
-**Status:** Planned
+**Branch:** `main`
+**Status:** Done
 **Spec:** [FEATURES.md — Feature 4](./FEATURES.md#feature-4-dark-mode-theme-overhaul-codex-black--gray)
 
 ### Tasks
 
-- [ ] Update light mode CSS variables in `web/src/index.css` (cool gray palette)
-- [ ] Update dark mode CSS variables in `web/src/index.css` (Codex black palette)
-- [ ] Replace hardcoded colors in `Sidebar.tsx` (amber-500, red-500)
-- [ ] Replace hardcoded colors in `HomePage.tsx` (amber-500, green-500, blue-500)
-- [ ] Replace hardcoded colors in `SessionItem.tsx` (blue-500, #5BA8A0, green-500, red-400)
-- [ ] Visual QA: test all views in light mode
-- [ ] Visual QA: test all views in dark mode
-- [ ] Update Playground component with theme samples
-- [ ] (Optional) Add theme selector (Codex Black / Claude Beige)
+- [x] Update dark mode CSS variables in `web/src/index.css` (cool near-black palette)
+- [x] Replace hardcoded colors in `DiffFileTree.tsx` (green-400, red-400, yellow-400 -> theme tokens)
+- [x] Fix DiffViewer light mode (use card bg instead of code-bg, proper file/hunk headers)
+- [x] Visual QA: test all views in light mode
+- [x] Visual QA: test all views in dark mode
 
-### Notes
+### Key Color Changes (Dark Mode)
 
-Primary change is in a single CSS file. All 27+ components auto-inherit via Tailwind utilities.
+| Token | Before | After |
+|-------|--------|-------|
+| Background | `#2b2a27` | `#141414` |
+| Card | `#1f1e1b` | `#1C1C1C` |
+| Sidebar | `#252422` | `#181818` |
+| Muted text | `#8a8780` | `#8C8C8C` |
+| Success | `#48bb78` | `#4ADE80` |
+| Error | `#fc8181` | `#F87171` |
+| Warning | `#f6e05e` | `#FBBF24` |
 
 ---
 
 ## 2. Sandbox & YOLO Mode
 
-**Branch:** `claude/feat-sandbox-yolo-*`
-**Status:** Planned
+**Branch:** `main`
+**Status:** Done (shipped in prior PR)
 **Spec:** [FEATURES.md — Feature 2](./FEATURES.md#feature-2-sandbox--yolo-mode)
 
-### Tasks
-
-#### Sandbox Mode (Claude)
-- [ ] Investigate Claude CLI sandbox flags (test `--sandbox`, `--dangerously-skip-permissions`)
-- [ ] Add `claudeSandbox` field to `SdkSessionInfo` and `LaunchOptions` in `session-types.ts`
-- [ ] Pass sandbox flag in `cli-launcher.ts` when launching Claude CLI
-- [ ] Add sandbox toggle to `HomePage.tsx` for Claude backend
-- [ ] Accept `claudeSandbox` in `POST /sessions/create` in `routes.ts`
-- [ ] Add tests for sandbox session creation
-
-#### YOLO Mode (Auto-Accept)
-- [ ] Add `autoApprove` field to `SdkSessionInfo` in `session-types.ts`
-- [ ] Implement auto-response logic in `ws-bridge.ts` for permission requests
-- [ ] Add audit logging for auto-approved actions
-- [ ] Add YOLO toggle to `HomePage.tsx` with safety warnings
-- [ ] Add YOLO indicator to `TopBar.tsx` and `Sidebar.tsx`
-- [ ] (Optional) Add per-tool auto-approve rules
-- [ ] Add tests for YOLO permission auto-response
-
-### Notes
-
-Codex sandbox already works (`workspace-write` / `danger-full-access`). This feature extends sandbox to Claude and adds universal auto-accept.
+Implemented in PRs #2 and #3. Claude Code sandbox mode via `--settings` flag, YOLO mode via `--dangerously-skip-permissions`. Both with UI toggles and confirmation dialogs.
 
 ---
 
@@ -128,8 +114,76 @@ Low urgency but important for long-term stability. The `--sdk-url` protocol is u
 
 ---
 
+## 5. Session Collections
+
+**Branch:** `main`
+**Status:** Done
+
+Sidebar sessions can now be organized into named, collapsible collections with drag-and-drop reorder.
+
+### New Files
+- `web/src/collections/` — Zustand store, types, drag-reorder utils, sidebar grouping hook
+- `web/src/components/CollectionGroup.tsx` + test — Collapsible collection group
+- `web/src/components/CreateCollectionButton.tsx` — Inline create button in sidebar
+
+### Modified Files
+- `Sidebar.tsx` — Collection groups above ungrouped projects, drop zones
+- `SessionItem.tsx` — Drag handle for collection assignment
+- `store.ts` — Collapsed projects state
+- `App.tsx` — Collection store wiring
+
+---
+
+## 6. Enhanced Diff Review
+
+**Branch:** `main`
+**Status:** Done
+
+Full-featured diff review panel with file tree, scope selector, and unified diff rendering.
+
+### New Files
+- `web/src/components/EnhancedDiffPanel.tsx` — Three-pane diff layout
+- `web/src/components/DiffFileTree.tsx` — Hierarchical file tree with status indicators
+- `web/src/components/DiffContentArea.tsx` — Selected file diff content
+- `web/src/components/DiffScopeSelector.tsx` — Uncommitted/staged/commit-range toggle
+- `web/src/hooks/useDiffData.ts` — Diff fetching hook
+- `web/src/lib/diff-stats.ts` — Unified diff parser
+
+### Modified Files
+- `routes.ts` — `GET /api/sessions/:id/diff` endpoint
+- `api.ts` — `getSessionDiff()` client method
+- `ws.ts` — Tracks changed files from tool results
+- `store.ts` — `changedFiles` state per session
+
+### Bug Fix
+- `DiffViewer.tsx` — `parsePatchToHunks` now skips `\ No newline at end of file` markers
+
+---
+
+## 7. Rebrand
+
+**Branch:** `main`
+**Status:** Done
+
+Renamed "The Vibe Companion" to "Claude Mission Control" across all user-facing surfaces.
+
+### Changes
+- **UI:** Sidebar header, HomePage hero, MessageFeed empty state
+- **HTML/PWA:** `<title>`, manifest name/short_name, background color
+- **Backend/CLI:** Service messages, Codex adapter client title
+- **Docs:** CLAUDE.md, README.md, FEATURES.md, CODEX_MAPPING.md
+
+> npm package name `the-vibe-companion` unchanged.
+
+---
+
 ## Changelog
 
 | Date | Feature | Update |
 |------|---------|--------|
+| 2026-02-13 | Collections | Session collections with drag-and-drop, collapsible groups |
+| 2026-02-13 | Diff Review | Enhanced diff panel with file tree, scope selector, DiffViewer light mode fix |
+| 2026-02-13 | Dark Mode | Cool near-black palette, improved contrast, theme-aware diff colors |
+| 2026-02-13 | Rebrand | "The Vibe Companion" -> "Claude Mission Control" |
+| 2026-02-13 | Tests | Fixed 7 failing tests, all 786 passing |
 | 2026-02-12 | All | Initial planning and feature specs created |

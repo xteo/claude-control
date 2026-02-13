@@ -135,6 +135,44 @@ vi.mock("../store.js", () => {
   return { useStore: useStoreFn };
 });
 
+// ─── Mock collections store ─────────────────────────────────────────────────
+
+const mockCollectionsState = {
+  collections: [] as { id: string; name: string; sortOrder: number; createdAt: number }[],
+  sessionAssignments: {} as Record<string, string>,
+  collapsedCollections: new Set<string>(),
+  unassignSession: vi.fn(),
+};
+
+vi.mock("../collections/store.js", () => {
+  const useStoreFn = (selector: (state: typeof mockCollectionsState) => unknown) => {
+    return selector(mockCollectionsState);
+  };
+  useStoreFn.getState = () => mockCollectionsState;
+  return { useCollectionsStore: useStoreFn };
+});
+
+// ─── Mock useSidebarGroups to delegate to real groupSessionsByProject ───────
+
+import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
+
+vi.mock("../collections/use-sidebar-groups.js", () => ({
+  useSidebarGroups: (sessions: SessionItemType[]) => ({
+    collectionGroups: [],
+    ungroupedProjectGroups: groupSessionsByProject(sessions),
+  }),
+}));
+
+// ─── Mock CollectionGroup and CreateCollectionButton ────────────────────────
+
+vi.mock("./CollectionGroup.js", () => ({
+  CollectionGroup: () => null,
+}));
+
+vi.mock("./CreateCollectionButton.js", () => ({
+  CreateCollectionButton: () => <button data-testid="create-collection">+ New Collection</button>,
+}));
+
 // ─── Import component after mocks ───────────────────────────────────────────
 
 import { Sidebar } from "./Sidebar.js";

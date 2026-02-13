@@ -86,13 +86,13 @@ switch (command) {
     const { status } = await import("../server/service.js");
     const result = await status();
     if (!result.installed) {
-      console.log("The Companion is not installed as a service.");
+      console.log("Claude Mission Control is not installed as a service.");
       console.log("Run: the-companion install");
     } else if (result.running) {
-      console.log(`The Companion is running (PID: ${result.pid})`);
+      console.log(`Claude Mission Control is running (PID: ${result.pid})`);
       console.log(`  URL: http://localhost:${result.port}`);
     } else {
-      console.log("The Companion is installed but not running.");
+      console.log("Claude Mission Control is installed but not running.");
       console.log("Check logs at ~/.companion/logs/");
     }
     break;

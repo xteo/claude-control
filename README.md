@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="screenshot.png" alt="The Companion" width="100%" />
+  <img src="screenshot.png" alt="Claude Mission Control" width="100%" />
 </p>
 
-<h1 align="center">The Companion</h1>
+<h1 align="center">Claude Mission Control</h1>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/the-companion"><img src="https://img.shields.io/npm/v/the-companion.svg" alt="npm version" /></a>
@@ -30,7 +30,7 @@ the-companion serve
 
 Claude Code is powerful but stuck in a terminal. You can't easily run multiple sessions, there's no visual feedback on tool calls, and if the process dies your context is gone.
 
-The Companion fixes that. It spawns Claude Code processes, streams their output to your browser in real-time, and lets you approve or deny tool calls from a proper UI.
+Claude Mission Control fixes that. It spawns Claude Code processes, streams their output to your browser in real-time, and lets you approve or deny tool calls from a proper UI.
 
 ## What you get
 
