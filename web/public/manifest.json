@@ -1,11 +1,11 @@
 {
-  "name": "The Companion",
-  "short_name": "Companion",
+  "name": "Claude Mission Control",
+  "short_name": "Mission Control",
   "description": "Web UI for Claude Code and Codex",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#2b2a27",
+  "background_color": "#0D0D0D",
   "theme_color": "#ae5630",
   "icons": [
     {

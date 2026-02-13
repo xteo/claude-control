@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import { useStore } from "../store.js";
+import { setSessionDragData } from "../collections/drag-reorder.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 
 interface SessionItemProps {
@@ -74,7 +75,11 @@ export function SessionItem({
     : "text-cc-accent bg-cc-accent/10";
 
   return (
-    <div className={`relative group ${archived ? "opacity-50" : ""}`}>
+    <div
+      className={`relative group ${archived ? "opacity-50" : ""}`}
+      draggable={!archived}
+      onDragStart={(e) => { if (!archived) setSessionDragData(e, s.id); }}
+    >
       <button
         onClick={() => onSelect(s.id)}
         onDoubleClick={(e) => {

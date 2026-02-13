@@ -8,7 +8,6 @@ import { ChatView } from "./components/ChatView.js";
 import { TopBar } from "./components/TopBar.js";
 import { HomePage } from "./components/HomePage.js";
 import { TaskPanel } from "./components/TaskPanel.js";
-import { DiffPanel } from "./components/DiffPanel.js";
 import { Playground } from "./components/Playground.js";
 import { UpdateBanner } from "./components/UpdateBanner.js";
 import { SettingsPage } from "./components/SettingsPage.js";

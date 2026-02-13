@@ -3,6 +3,11 @@ import { PermissionBanner } from "./PermissionBanner.js";
 import { MessageBubble } from "./MessageBubble.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 import { DiffViewer } from "./DiffViewer.js";
+import { DiffFileTree } from "./DiffFileTree.js";
+import { DiffContentArea } from "./DiffContentArea.js";
+import { DiffScopeSelector } from "./DiffScopeSelector.js";
+import { CollectionGroup } from "./CollectionGroup.js";
+import { CreateCollectionButton } from "./CreateCollectionButton.js";
 import { UpdateBanner } from "./UpdateBanner.js";
 import { ClaudeMdEditor } from "./ClaudeMdEditor.js";
 import { ChatView } from "./ChatView.js";
@@ -12,6 +17,7 @@ import type { PermissionRequest, ChatMessage, ContentBlock, SessionState, McpSer
 import type { TaskItem } from "../types.js";
 import type { UpdateInfo, GitHubPRInfo } from "../api.js";
 import { GitHubPRDisplay } from "./TaskPanel.js";
+import type { DiffFileInfo } from "../lib/diff-stats.js";
 
 // ─── Mock Data ──────────────────────────────────────────────────────────────
 
@@ -1056,6 +1062,65 @@ export function Playground() {
             </Card>
           </div>
         </Section>
+
+        {/* ─── Session Collections ──────────────────────────────── */}
+        <Section title="Session Collections" description="User-defined named groups for organizing sessions in the sidebar">
+          <div className="space-y-4">
+            <Card label="Collection with sessions">
+              <div className="w-[260px] bg-cc-sidebar border border-cc-border rounded-xl overflow-hidden">
+                <PlaygroundCollectionGroup
+                  name="Auth Feature"
+                  collectionId="pg-col-1"
+                  sessionCount={2}
+                />
+              </div>
+            </Card>
+            <Card label="Empty collection (drop zone)">
+              <div className="w-[260px] bg-cc-sidebar border border-cc-border rounded-xl overflow-hidden">
+                <PlaygroundCollectionGroup
+                  name="Refactoring"
+                  collectionId="pg-col-2"
+                  sessionCount={0}
+                />
+              </div>
+            </Card>
+            <Card label="Create collection button">
+              <div className="w-[260px] bg-cc-sidebar border border-cc-border rounded-xl overflow-hidden p-1">
+                <CreateCollectionButton />
+              </div>
+            </Card>
+          </div>
+        </Section>
+
+        {/* ─── Enhanced Diff Review ──────────────────────────────── */}
+        <Section title="Enhanced Diff Review" description="Multi-file diff panel with scope selector, file tree, and accordion layout">
+          <div className="space-y-4">
+            <Card label="Scope selector toolbar">
+              <PlaygroundDiffScopeSelector />
+            </Card>
+            <Card label="File tree with stats">
+              <div className="w-[220px] h-[300px] border border-cc-border rounded-xl overflow-hidden bg-cc-sidebar">
+                <DiffFileTree
+                  files={MOCK_DIFF_FILES}
+                  selectedFile="src/store.ts"
+                  onSelectFile={() => {}}
+                />
+              </div>
+            </Card>
+            <Card label="Accordion content area">
+              <div className="h-[400px] border border-cc-border rounded-xl overflow-hidden">
+                <DiffContentArea
+                  files={MOCK_DIFF_FILES}
+                  diffs={MOCK_DIFFS}
+                  expandedFiles={new Set(["src/store.ts"])}
+                  onToggleFile={() => {}}
+                  selectedFile="src/store.ts"
+                  onSelectFile={() => {}}
+                />
+              </div>
+            </Card>
+          </div>
+        </Section>
       </div>
     </div>
   );
@@ -1328,6 +1393,125 @@ function PlaygroundMcpRow({ server }: { server: McpServerDetail }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Mock data for Enhanced Diff Review ─────────────────────────────────────
+
+const MOCK_DIFF_FILES: DiffFileInfo[] = [
+  { fileName: "src/store.ts", status: "modified", additions: 15, deletions: 3 },
+  { fileName: "src/ws.ts", status: "modified", additions: 8, deletions: 0 },
+  { fileName: "server/routes.ts", status: "modified", additions: 50, deletions: 0 },
+  { fileName: "src/components/EnhancedDiffPanel.tsx", status: "added", additions: 120, deletions: 0 },
+  { fileName: "src/lib/diff-stats.ts", status: "added", additions: 45, deletions: 0 },
+];
+
+const MOCK_DIFFS = new Map([
+  ["src/store.ts", `diff --git a/src/store.ts b/src/store.ts
+--- a/src/store.ts
++++ b/src/store.ts
+@@ -58,6 +58,8 @@
+   activeTab: "chat" | "diff";
+   diffPanelSelectedFile: Map<string, string>;
++  diffScope: Map<string, "uncommitted" | "branch" | "last_turn">;
++  lastTurnChangedFiles: Map<string, Set<string>>;
+
+   // Actions
+   setDarkMode: (v: boolean) => void;`],
+  ["src/ws.ts", `diff --git a/src/ws.ts b/src/ws.ts
+--- a/src/ws.ts
++++ b/src/ws.ts
+@@ -10,6 +10,8 @@
+ const processedToolUseIds = new Map<string, Set<string>>();
++/** Track files changed in the current turn */
++const currentTurnFiles = new Map<string, Set<string>>();`],
+]);
+
+// ─── Playground Collection Group (standalone, no store dependency) ───────────
+
+function PlaygroundCollectionGroup({ name, collectionId, sessionCount }: { name: string; collectionId: string; sessionCount: number }) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <div className="mt-1 pt-1 border-t border-cc-border/50">
+      <div className="group/collection relative">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="w-full px-2 py-1.5 flex items-center gap-1.5 hover:bg-cc-hover rounded-md transition-colors cursor-pointer"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            className={`w-3 h-3 text-cc-muted transition-transform ${collapsed ? "" : "rotate-90"}`}
+          >
+            <path d="M6 4l4 4-4 4" />
+          </svg>
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary/70 shrink-0">
+            <path d="M1.5 2A1.5 1.5 0 000 3.5v2h16v-2A1.5 1.5 0 0014.5 2h-6l-1-1h-6zM16 6.5H0v6A1.5 1.5 0 001.5 14h13a1.5 1.5 0 001.5-1.5v-7z" />
+          </svg>
+          <span className="text-[11px] font-semibold text-cc-fg/80 truncate">{name}</span>
+          <span className="text-[10px] text-cc-muted/60 shrink-0 ml-auto">{sessionCount}</span>
+        </button>
+        <button
+          className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover/collection:opacity-100 hover:bg-cc-border text-cc-muted hover:text-red-400 transition-all cursor-pointer"
+          title="Delete collection"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </div>
+      {!collapsed && (
+        <div className="space-y-0.5 mt-0.5">
+          {sessionCount === 0 ? (
+            <p className="px-3 py-2 text-[10px] text-cc-muted/50 italic">Drop sessions here</p>
+          ) : (
+            Array.from({ length: sessionCount }, (_, i) => (
+              <div key={i} className="px-3.5 py-2 text-[13px] text-cc-fg/70 rounded-lg hover:bg-cc-hover cursor-pointer flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-cc-success/60 shrink-0" />
+                <span className="truncate">Session {i + 1}</span>
+                <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-[#5BA8A0] bg-[#5BA8A0]/10">Claude</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Playground Diff Scope Selector (standalone, no store dependency) ────────
+
+function PlaygroundDiffScopeSelector() {
+  const [scope, setScope] = useState<"uncommitted" | "branch" | "last_turn">("uncommitted");
+  const scopes = [
+    { value: "uncommitted" as const, label: "Uncommitted" },
+    { value: "branch" as const, label: "Branch (vs main)" },
+    { value: "last_turn" as const, label: "Last Turn" },
+  ];
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 border-b border-cc-border bg-cc-card">
+      <div className="flex items-center gap-1 rounded-lg bg-cc-bg p-0.5">
+        {scopes.map((s) => (
+          <button
+            key={s.value}
+            onClick={() => setScope(s.value)}
+            className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
+              scope === s.value
+                ? "bg-cc-primary text-white shadow-sm"
+                : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1" />
+      <button className="px-2 py-1 text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover rounded-md transition-colors cursor-pointer">
+        Expand All
+      </button>
     </div>
   );
 }

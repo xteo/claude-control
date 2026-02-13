@@ -281,6 +281,17 @@ export interface UpdateInfo {
   lastChecked: number;
 }
 
+export interface DiffAllResult {
+  diff: string;
+  stats: Array<{ file: string; additions: number; deletions: number; status: string }>;
+}
+
+export interface BranchDiffResult {
+  diff: string;
+  stats: Array<{ file: string; additions: number; deletions: number; status: string }>;
+  baseBranch: string;
+}
+
 export interface UsageLimits {
   five_hour: { utilization: number; resets_at: string | null } | null;
   seven_day: { utilization: number; resets_at: string | null } | null;
@@ -450,6 +461,14 @@ export const api = {
     ),
   saveClaudeMd: (path: string, content: string) =>
     put<{ ok: boolean; path: string }>("/fs/claude-md", { path, content }),
+  getUncommittedDiff: (cwd: string) =>
+    get<DiffAllResult>(
+      `/fs/diff-all?cwd=${encodeURIComponent(cwd)}`,
+    ),
+  getBranchDiff: (cwd: string) =>
+    get<BranchDiffResult>(
+      `/fs/branch-diff?cwd=${encodeURIComponent(cwd)}`,
+    ),
 
   // Usage limits
   getUsageLimits: () => get<UsageLimits>("/usage-limits"),

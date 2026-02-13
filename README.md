@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="screenshot.png" alt="The Companion" width="100%" />
+  <img src="screenshot.png" alt="Claude Mission Control" width="100%" />
 </p>
 
-<h1 align="center">The Companion</h1>
+<h1 align="center">Claude Mission Control</h1>
 <p align="center"><strong>Web UI for Claude Code and Codex sessions.</strong></p>
 <p align="center">Run multiple agents, inspect every tool call, and gate risky actions with explicit approvals.</p>
 
@@ -40,13 +40,15 @@ the-companion serve
 |---|---|
 | <img src="screenshot.png" alt="Main workspace" width="100%" /> | <img src="web/docs/screenshots/notification-section.png" alt="Permission and notifications" width="100%" /> |
 
-## Architecture (simple)
-```text
-Browser (React)
-  <-> ws://localhost:3456/ws/browser/:session
-Companion server (Bun + Hono)
-  <-> ws://localhost:3456/ws/cli/:session
-Claude Code / Codex CLI
+## How it works
+
+The Claude Code CLI has a hidden `--sdk-url` flag. When set, it connects to a WebSocket server instead of running in a terminal. The protocol is NDJSON (newline-delimited JSON).
+
+```
+┌──────────────┐    WebSocket (NDJSON)    ┌─────────────────┐    WebSocket (JSON)    ┌─────────────┐
+│  Claude Code │ ◄───────────────────────► │   Bun + Hono    │ ◄───────────────────► │   Browser   │
+│     CLI      │  /ws/cli/:session        │     Server      │  /ws/browser/:session │   (React)   │
+└──────────────┘                          └─────────────────┘                       └─────────────┘
 ```
 
 The bridge uses the CLI `--sdk-url` websocket path and NDJSON events.

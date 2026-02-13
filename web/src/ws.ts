@@ -9,6 +9,8 @@ const lastSeqBySession = new Map<string, number>();
 const taskCounters = new Map<string, number>();
 /** Track processed tool_use IDs to prevent duplicate task creation */
 const processedToolUseIds = new Map<string, Set<string>>();
+/** Track files changed in the current turn (accumulated until result) */
+const currentTurnFiles = new Map<string, Set<string>>();
 
 function normalizePath(path: string): string {
   const isAbs = path.startsWith("/");
@@ -120,6 +122,13 @@ function extractChangedFilesFromBlocks(sessionId: string, blocks: ContentBlock[]
       if (isPathInSessionScope(resolvedPath, sessionCwd)) {
         store.addChangedFile(sessionId, resolvedPath);
       }
+      // Also track in current turn accumulator
+      let turnSet = currentTurnFiles.get(sessionId);
+      if (!turnSet) {
+        turnSet = new Set();
+        currentTurnFiles.set(sessionId, turnSet);
+      }
+      turnSet.add(resolvedPath);
     }
   }
 }
@@ -338,6 +347,12 @@ function handleParsedMessage(
       store.setStreaming(sessionId, null);
       store.setStreamingStats(sessionId, null);
       store.setSessionStatus(sessionId, "idle");
+      // Snapshot current turn files for the enhanced diff panel
+      const turnFiles = currentTurnFiles.get(sessionId);
+      if (turnFiles && turnFiles.size > 0) {
+        store.setLastTurnChangedFiles(sessionId, new Set(turnFiles));
+        currentTurnFiles.delete(sessionId);
+      }
       // Play notification sound if enabled and tab is not focused
       if (!document.hasFocus() && store.notificationSound) {
         playNotificationSound();
@@ -603,6 +618,7 @@ export function disconnectSession(sessionId: string) {
   }
   processedToolUseIds.delete(sessionId);
   taskCounters.delete(sessionId);
+  currentTurnFiles.delete(sessionId);
 }
 
 export function disconnectAll() {
@@ -657,6 +673,10 @@ export function sendToSession(sessionId: string, msg: BrowserOutgoingMessage) {
     }
   }
   if (ws?.readyState === WebSocket.OPEN) {
+    // Clear current-turn accumulator when a new user message starts a new turn
+    if ("type" in msg && (msg as { type: string }).type === "user") {
+      currentTurnFiles.delete(sessionId);
+    }
     ws.send(JSON.stringify(outgoing));
   }
 }
