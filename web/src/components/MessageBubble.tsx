@@ -5,7 +5,6 @@ import type { ChatMessage, ContentBlock } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 import { TeamMessageBlock } from "./TeamMessageBlock.js";
 import { sanitizeMarkdownHref } from "../utils/markdown-security.js";
-import { sanitizeMarkdownHref } from "../utils/markdown-security.js";
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
