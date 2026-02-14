@@ -6,6 +6,7 @@ import { sendToSession } from "../ws.js";
 import type { PermissionRequest } from "../types.js";
 import type { PermissionUpdate } from "../../server/session-types.js";
 import { DiffViewer } from "./DiffViewer.js";
+import { sanitizeMarkdownHref } from "../utils/markdown-security.js";
 
 /** Human-readable label for a permission suggestion */
 function suggestionLabel(s: PermissionUpdate): string {
@@ -438,7 +439,26 @@ function ExitPlanModeDisplay({ input }: { input: Record<string, unknown> }) {
             Plan
           </div>
           <div className="px-3 py-2.5 max-h-64 overflow-y-auto text-xs text-cc-fg leading-relaxed markdown-body">
-            <Markdown remarkPlugins={[remarkGfm]}>{plan}</Markdown>
+            <Markdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ href, children }) => {
+                  const safeHref = sanitizeMarkdownHref(href);
+                  return (
+                    <a
+                      href={safeHref}
+                      target={safeHref === "#" ? undefined : "_blank"}
+                      rel={safeHref === "#" ? undefined : "noopener noreferrer"}
+                      className="text-cc-primary hover:underline"
+                    >
+                      {children}
+                    </a>
+                  );
+                },
+              }}
+            >
+              {plan}
+            </Markdown>
           </div>
         </div>
       )}

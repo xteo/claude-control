@@ -1,8 +1,10 @@
 import {
   mkdirSync,
   readFileSync,
+  chmodSync,
   writeFileSync,
   existsSync,
+  statSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -23,32 +25,58 @@ interface AuthConfig {
 
 const DEFAULT_PATH = join(homedir(), ".companion", "auth.json");
 const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const AUTH_FILE_MODE = 0o600;
 
 let filePath = DEFAULT_PATH;
 let config: AuthConfig | null = null;
 let loaded = false;
+let fileMtimeMs = 0;
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
 function load(): void {
-  if (loaded) return;
+  let onDiskMtime: number | null = null;
   try {
-    if (existsSync(filePath)) {
-      const raw = JSON.parse(readFileSync(filePath, "utf-8")) as AuthConfig;
-      if (raw && typeof raw.username === "string" && typeof raw.passwordHash === "string") {
-        config = raw;
-      }
+    onDiskMtime = statSync(filePath).mtimeMs;
+  } catch {
+    if (loaded && config !== null) {
+      config = null;
+      fileMtimeMs = 0;
+    } else if (!existsSync(filePath)) {
+      config = null;
+    }
+    loaded = true;
+    return;
+  }
+
+  if (loaded && onDiskMtime === fileMtimeMs) return;
+
+  try {
+    const raw = JSON.parse(readFileSync(filePath, "utf-8")) as AuthConfig;
+    if (raw && typeof raw.username === "string" && typeof raw.passwordHash === "string") {
+      config = raw;
+    } else {
+      config = null;
     }
   } catch {
     config = null;
   }
+  fileMtimeMs = onDiskMtime;
   loaded = true;
 }
 
 function persist(): void {
   if (!config) return;
   mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, JSON.stringify(config, null, 2), "utf-8");
+  writeFileSync(filePath, JSON.stringify(config, null, 2), {
+    encoding: "utf-8",
+    mode: AUTH_FILE_MODE,
+  });
+  try {
+    chmodSync(filePath, AUTH_FILE_MODE);
+  } catch {
+    // Ignore chmod failures on filesystems that do not support mode changes.
+  }
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -133,4 +161,5 @@ export function _resetForTest(customPath?: string): void {
   loaded = false;
   filePath = customPath || DEFAULT_PATH;
   config = null;
+  fileMtimeMs = 0;
 }

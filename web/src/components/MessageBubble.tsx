@@ -4,6 +4,8 @@ import remarkGfm from "remark-gfm";
 import type { ChatMessage, ContentBlock } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 import { TeamMessageBlock } from "./TeamMessageBlock.js";
+import { sanitizeMarkdownHref } from "../utils/markdown-security.js";
+import { sanitizeMarkdownHref } from "../utils/markdown-security.js";
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
@@ -175,11 +177,19 @@ function MarkdownContent({ text }: { text: string }) {
           li: ({ children }) => (
             <li className="text-cc-fg">{children}</li>
           ),
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="text-cc-primary hover:underline">
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            const safeHref = sanitizeMarkdownHref(href);
+            return (
+              <a
+                href={safeHref}
+                target={safeHref === "#" ? undefined : "_blank"}
+                rel={safeHref === "#" ? undefined : "noopener noreferrer"}
+                className="text-cc-primary hover:underline"
+              >
+                {children}
+              </a>
+            );
+          },
           blockquote: ({ children }) => (
             <blockquote className="border-l-2 border-cc-primary/30 pl-3 my-2 text-cc-muted italic">
               {children}
