@@ -1,4 +1,5 @@
 import type { SdkSessionInfo } from "./types.js";
+import { captureEvent, captureException } from "./analytics.js";
 
 const BASE = "/api";
 
@@ -8,67 +9,167 @@ function check401(res: Response): void {
   }
 }
 
-async function post<T = unknown>(path: string, body?: object): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  check401(res);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+function nowMs(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
   }
-  return res.json();
+  return Date.now();
+}
+
+function trackApiSuccess(method: string, path: string, durationMs: number, status: number): void {
+  captureEvent("api_request_succeeded", {
+    method,
+    path,
+    status,
+    duration_ms: Math.round(durationMs),
+  });
+}
+
+function trackApiFailure(
+  method: string,
+  path: string,
+  durationMs: number,
+  error: unknown,
+  status?: number,
+): void {
+  captureEvent("api_request_failed", {
+    method,
+    path,
+    status,
+    duration_ms: Math.round(durationMs),
+    error: error instanceof Error ? error.message : String(error),
+  });
+  captureException(error, { method, path, status });
+}
+
+async function post<T = unknown>(path: string, body?: object): Promise<T> {
+  const startedAt = nowMs();
+  let failureTracked = false;
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    check401(res);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      const apiError = new Error(err.error || res.statusText);
+      trackApiFailure("POST", path, nowMs() - startedAt, apiError, res.status);
+      failureTracked = true;
+      throw apiError;
+    }
+    trackApiSuccess("POST", path, nowMs() - startedAt, res.status);
+    return res.json();
+  } catch (error) {
+    if (!failureTracked) {
+      trackApiFailure("POST", path, nowMs() - startedAt, error);
+    }
+    throw error;
+  }
 }
 
 async function get<T = unknown>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
-  check401(res);
-  if (!res.ok) throw new Error(res.statusText);
-  return res.json();
+  const startedAt = nowMs();
+  let failureTracked = false;
+  try {
+    const res = await fetch(`${BASE}${path}`);
+    check401(res);
+    if (!res.ok) {
+      const apiError = new Error(res.statusText);
+      trackApiFailure("GET", path, nowMs() - startedAt, apiError, res.status);
+      failureTracked = true;
+      throw apiError;
+    }
+    trackApiSuccess("GET", path, nowMs() - startedAt, res.status);
+    return res.json();
+  } catch (error) {
+    if (!failureTracked) {
+      trackApiFailure("GET", path, nowMs() - startedAt, error);
+    }
+    throw error;
+  }
 }
 
 async function put<T = unknown>(path: string, body?: object): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  check401(res);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+  const startedAt = nowMs();
+  let failureTracked = false;
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    check401(res);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      const apiError = new Error(err.error || res.statusText);
+      trackApiFailure("PUT", path, nowMs() - startedAt, apiError, res.status);
+      failureTracked = true;
+      throw apiError;
+    }
+    trackApiSuccess("PUT", path, nowMs() - startedAt, res.status);
+    return res.json();
+  } catch (error) {
+    if (!failureTracked) {
+      trackApiFailure("PUT", path, nowMs() - startedAt, error);
+    }
+    throw error;
   }
-  return res.json();
 }
 
 async function patch<T = unknown>(path: string, body?: object): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  check401(res);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+  const startedAt = nowMs();
+  let failureTracked = false;
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    check401(res);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      const apiError = new Error(err.error || res.statusText);
+      trackApiFailure("PATCH", path, nowMs() - startedAt, apiError, res.status);
+      failureTracked = true;
+      throw apiError;
+    }
+    trackApiSuccess("PATCH", path, nowMs() - startedAt, res.status);
+    return res.json();
+  } catch (error) {
+    if (!failureTracked) {
+      trackApiFailure("PATCH", path, nowMs() - startedAt, error);
+    }
+    throw error;
   }
-  return res.json();
 }
 
 async function del<T = unknown>(path: string, body?: object): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "DELETE",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  check401(res);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+  const startedAt = nowMs();
+  let failureTracked = false;
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: "DELETE",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    check401(res);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      const apiError = new Error(err.error || res.statusText);
+      trackApiFailure("DELETE", path, nowMs() - startedAt, apiError, res.status);
+      failureTracked = true;
+      throw apiError;
+    }
+    trackApiSuccess("DELETE", path, nowMs() - startedAt, res.status);
+    return res.json();
+  } catch (error) {
+    if (!failureTracked) {
+      trackApiFailure("DELETE", path, nowMs() - startedAt, error);
+    }
+    throw error;
   }
-  return res.json();
 }
 
 export interface ContainerCreateOpts {
@@ -81,6 +182,15 @@ export interface ContainerCreateOpts {
 export interface ContainerStatus {
   available: boolean;
   version: string | null;
+}
+
+export interface CloudProviderPlan {
+  provider: "modal";
+  sessionId: string;
+  image: string;
+  cwd: string;
+  mappedPorts: Array<{ containerPort: number; hostPort: number }>;
+  commandPreview: string;
 }
 
 export interface CreateSessionOpts {
@@ -338,6 +448,10 @@ export const api = {
   // Containers
   getContainerStatus: () => get<ContainerStatus>("/containers/status"),
   getContainerImages: () => get<string[]>("/containers/images"),
+  getCloudProviderPlan: (provider: "modal", cwd: string, sessionId: string) =>
+    get<CloudProviderPlan>(
+      `/cloud/providers/${encodeURIComponent(provider)}/plan?cwd=${encodeURIComponent(cwd)}&sessionId=${encodeURIComponent(sessionId)}`,
+    ),
 
   // Editor
   startEditor: (sessionId: string) =>

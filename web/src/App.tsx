@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { useStore } from "./store.js";
 import { connectSession } from "./ws.js";
 import { api } from "./api.js";
+import { capturePageView } from "./analytics.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ChatView } from "./components/ChatView.js";
 import { TopBar } from "./components/TopBar.js";
@@ -54,6 +55,11 @@ export default function App() {
     window.addEventListener("companion:auth-expired", handler);
     return () => window.removeEventListener("companion:auth-expired", handler);
   }, []);
+
+  useEffect(() => {
+    capturePageView(hash || "#/");
+  }, [hash]);
+
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
