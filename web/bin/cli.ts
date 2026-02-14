@@ -117,16 +117,19 @@ switch (command) {
 
     if (subcommand === "setup") {
       if (isAuthConfigured()) {
-        console.error("Auth is already configured. Use 'the-companion auth reset' to start over.");
+        console.error("Auth is already configured. Use 'the-companion auth reset' first, then run setup again.");
         process.exit(1);
       }
-      // Read username and password interactively
-      process.stdout.write("Username: ");
-      const username = (await new Response(Bun.stdin.stream()).text()).trim().split("\n")[0];
-      if (!username) { console.error("Username is required."); process.exit(1); }
+      // Read username and password interactively via readline
+      const { createInterface } = await import("node:readline");
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const ask = (q: string) => new Promise<string>((resolve) => rl.question(q, resolve));
 
-      process.stdout.write("Password (min 8 chars): ");
-      const password = (await new Response(Bun.stdin.stream()).text()).trim().split("\n")[0];
+      const username = (await ask("Username: ")).trim();
+      if (!username) { rl.close(); console.error("Username is required."); process.exit(1); }
+
+      const password = (await ask("Password (min 8 chars): ")).trim();
+      rl.close();
       if (!password || password.length < 8) {
         console.error("Password must be at least 8 characters.");
         process.exit(1);
@@ -142,7 +145,8 @@ switch (command) {
       const authPath = join(homedir(), ".companion", "auth.json");
       if (existsSync(authPath)) {
         unlinkSync(authPath);
-        console.log("Auth credentials removed. The app is now open (no login required).");
+        console.log("Auth credentials removed. The app is now locked until new credentials are configured.");
+        console.log("Run 'the-companion auth setup' to set new credentials.");
       } else {
         console.log("No auth credentials found. Nothing to reset.");
       }

@@ -9,15 +9,18 @@ const PUBLIC_PATHS = ["/api/auth/status", "/api/auth/login", "/api/auth/setup"];
 
 /**
  * Hono middleware that gates API routes behind cookie-based auth.
- * Passes through if auth is not configured (first-run mode).
+ * When auth is not configured, only the status endpoint is accessible —
+ * the app is fully locked until credentials are set up via CLI.
  */
 export function authMiddleware(): MiddlewareHandler {
   return async (c, next) => {
-    // Skip if auth not configured (first-run mode)
-    if (!isAuthConfigured()) return next();
-
-    // Skip public auth endpoints
+    // Always allow public auth endpoints (status, login)
     if (PUBLIC_PATHS.includes(c.req.path)) return next();
+
+    // If auth not configured, block all non-public endpoints
+    if (!isAuthConfigured()) {
+      return c.json({ error: "Auth not configured. Run 'the-companion auth setup' on the server." }, 403);
+    }
 
     // Validate session cookie
     const cookieHeader = c.req.header("cookie") || "";
@@ -33,10 +36,10 @@ export function authMiddleware(): MiddlewareHandler {
 /**
  * Validates the session cookie from a raw Request object.
  * Used for WebSocket upgrade validation in Bun.serve's fetch handler.
- * Returns true if valid token found, or if auth is not configured.
+ * Returns false if auth is not configured (app locked until CLI setup).
  */
 export function validateWsCookie(req: Request): boolean {
-  if (!isAuthConfigured()) return true;
+  if (!isAuthConfigured()) return false;
   const cookieHeader = req.headers.get("cookie") || "";
   const token = parseCookieToken(cookieHeader);
   if (!token) return false;
