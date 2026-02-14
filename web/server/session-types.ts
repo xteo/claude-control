@@ -29,6 +29,16 @@ export interface CLISystemStatusMessage {
   session_id: string;
 }
 
+export interface CLISystemTaskNotificationMessage {
+  type: "system";
+  subtype: "task_notification";
+  task_id: string;
+  status: string;
+  summary?: string;
+  uuid: string;
+  session_id: string;
+}
+
 export interface CLIAssistantMessage {
   type: "assistant";
   message: {
@@ -149,6 +159,7 @@ export interface CLIControlResponseMessage {
 export type CLIMessage =
   | CLISystemInitMessage
   | CLISystemStatusMessage
+  | CLISystemTaskNotificationMessage
   | CLIAssistantMessage
   | CLIResultMessage
   | CLIStreamEventMessage
@@ -204,7 +215,8 @@ export type BrowserIncomingMessageBase =
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "session_name_update"; name: string }
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }
-  | { type: "mcp_status"; servers: McpServerDetail[] };
+  | { type: "mcp_status"; servers: McpServerDetail[] }
+  | { type: "task_notification"; task_id: string; status: string; summary?: string };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 

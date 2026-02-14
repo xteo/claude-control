@@ -6,6 +6,7 @@ import type {
   CLIMessage,
   CLISystemInitMessage,
   CLISystemStatusMessage,
+  CLISystemTaskNotificationMessage,
   CLIAssistantMessage,
   CLIResultMessage,
   CLIStreamEventMessage,
@@ -710,7 +711,7 @@ export class WsBridge {
     }
   }
 
-  private handleSystemMessage(session: Session, msg: CLISystemInitMessage | CLISystemStatusMessage) {
+  private handleSystemMessage(session: Session, msg: CLISystemInitMessage | CLISystemStatusMessage | CLISystemTaskNotificationMessage) {
     if (msg.subtype === "init") {
       // Keep the launcher-assigned session_id as the canonical ID.
       // The CLI may report its own internal session_id which differs
@@ -750,8 +751,15 @@ export class WsBridge {
         type: "status_change",
         status: msg.status ?? null,
       });
+    } else if (msg.subtype === "task_notification") {
+      this.broadcastToBrowsers(session, {
+        type: "task_notification",
+        task_id: msg.task_id,
+        status: msg.status,
+        summary: msg.summary,
+      });
     }
-    // Other system subtypes (compact_boundary, task_notification, etc.) can be forwarded as needed
+    // Other system subtypes (compact_boundary, etc.) can be forwarded as needed
   }
 
   private handleAssistantMessage(session: Session, msg: CLIAssistantMessage) {
@@ -761,9 +769,16 @@ export class WsBridge {
       parent_tool_use_id: msg.parent_tool_use_id,
       timestamp: Date.now(),
     };
-    session.messageHistory.push(browserMsg);
+    // Deduplicate: skip if this message ID already exists in history
+    const msgId = msg.message?.id;
+    const isDuplicate = msgId && session.messageHistory.some(
+      (m) => m.type === "assistant" && (m as { message?: { id?: string } }).message?.id === msgId,
+    );
+    if (!isDuplicate) {
+      session.messageHistory.push(browserMsg);
+      this.persistSession(session);
+    }
     this.broadcastToBrowsers(session, browserMsg);
-    this.persistSession(session);
   }
 
   private handleResultMessage(session: Session, msg: CLIResultMessage) {

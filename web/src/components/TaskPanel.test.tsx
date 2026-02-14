@@ -20,6 +20,8 @@ interface MockStoreState {
   taskPanelOpen: boolean;
   setTaskPanelOpen: ReturnType<typeof vi.fn>;
   prStatus: Map<string, { available: boolean; pr?: unknown } | null>;
+  teamsBySession: Map<string, unknown>;
+  teamMessages: Map<string, unknown[]>;
 }
 
 let mockState: MockStoreState;
@@ -32,6 +34,8 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     taskPanelOpen: true,
     setTaskPanelOpen: vi.fn(),
     prStatus: new Map(),
+    teamsBySession: new Map(),
+    teamMessages: new Map(),
     ...overrides,
   };
 }

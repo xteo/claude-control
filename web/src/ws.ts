@@ -1,5 +1,6 @@
 import { useStore } from "./store.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, TaskItem, SdkSessionInfo, McpServerConfig } from "./types.js";
+import type { TeamMessage } from "./team-types.js";
 import { generateUniqueSessionName } from "./utils/names.js";
 import { playNotificationSound } from "./utils/notification-sound.js";
 
@@ -9,6 +10,10 @@ const lastSeqBySession = new Map<string, number>();
 const taskCounters = new Map<string, number>();
 /** Track processed tool_use IDs to prevent duplicate task creation */
 const processedToolUseIds = new Map<string, Set<string>>();
+/** Track processed tool_use IDs to prevent duplicate team info extraction */
+const processedTeamToolUseIds = new Map<string, Set<string>>();
+/** Map Task tool_use_id → member name for status transitions (spawning → active → idle) */
+const taskToolUseMemberMap = new Map<string, Map<string, string>>();
 /** Track files changed in the current turn (accumulated until result) */
 const currentTurnFiles = new Map<string, Set<string>>();
 
@@ -44,6 +49,15 @@ function getProcessedSet(sessionId: string): Set<string> {
   if (!set) {
     set = new Set();
     processedToolUseIds.set(sessionId, set);
+  }
+  return set;
+}
+
+function getTeamProcessedSet(sessionId: string): Set<string> {
+  let set = processedTeamToolUseIds.get(sessionId);
+  if (!set) {
+    set = new Set();
+    processedTeamToolUseIds.set(sessionId, set);
   }
   return set;
 }
@@ -129,6 +143,111 @@ function extractChangedFilesFromBlocks(sessionId: string, blocks: ContentBlock[]
         currentTurnFiles.set(sessionId, turnSet);
       }
       turnSet.add(resolvedPath);
+    }
+  }
+}
+
+let teamMsgCounter = 0;
+
+function extractTeamInfoFromBlocks(sessionId: string, blocks: ContentBlock[]) {
+  const store = useStore.getState();
+  const processed = getTeamProcessedSet(sessionId);
+
+  for (const block of blocks) {
+    // tool_result for a Task: subagent has completed, mark member as idle
+    if (block.type === "tool_result") {
+      const memberMap = taskToolUseMemberMap.get(sessionId);
+      if (memberMap) {
+        const memberName = memberMap.get(block.tool_use_id);
+        if (memberName) {
+          store.updateTeamMemberStatus(sessionId, memberName, "idle");
+          memberMap.delete(block.tool_use_id);
+        }
+      }
+      continue;
+    }
+
+    if (block.type !== "tool_use") continue;
+    const { name, input, id: toolUseId } = block;
+
+    // Deduplicate by tool_use_id using a separate set from task extraction
+    if (toolUseId) {
+      if (processed.has(toolUseId)) continue;
+      processed.add(toolUseId);
+    }
+
+    // TeamCreate: create a new team
+    if (name === "TeamCreate") {
+      const teamName = input.team_name as string;
+      if (teamName) {
+        store.setTeamInfo(sessionId, {
+          teamName,
+          leadSessionId: sessionId,
+          members: [],
+          createdAt: Date.now(),
+        });
+      }
+      continue;
+    }
+
+    // Task with team_name: a teammate spawn
+    if (name === "Task" && input.team_name) {
+      const memberName = input.name as string;
+      const agentType = (input.subagent_type as string) || "unknown";
+      const description = input.description as string | undefined;
+      if (memberName) {
+        // Check if member already exists (e.g. from history replay)
+        const existingTeam = store.teamsBySession.get(sessionId);
+        const existingMember = existingTeam?.members.find((m) => m.name === memberName);
+        if (!existingMember) {
+          store.addTeamMember(sessionId, {
+            name: memberName,
+            agentType,
+            status: "spawning",
+            description,
+          });
+        }
+        // Track tool_use_id → member name for status transitions on tool_result
+        if (toolUseId) {
+          let memberMap = taskToolUseMemberMap.get(sessionId);
+          if (!memberMap) {
+            memberMap = new Map();
+            taskToolUseMemberMap.set(sessionId, memberMap);
+          }
+          memberMap.set(toolUseId, memberName);
+        }
+        // Transition spawning → active (the subagent is now running)
+        store.updateTeamMemberStatus(sessionId, memberName, "active");
+      }
+      continue;
+    }
+
+    // SendMessage: inter-agent communication
+    if (name === "SendMessage") {
+      const msgType = input.type as string;
+      const recipient = input.recipient as string | undefined;
+      const content = input.content as string;
+      const summary = (input.summary as string) || "";
+
+      if (msgType && content) {
+        const teamMsg: TeamMessage = {
+          id: `team-msg-${Date.now()}-${++teamMsgCounter}`,
+          from: "lead",
+          to: msgType === "broadcast" ? null : (recipient || null),
+          content,
+          summary,
+          timestamp: Date.now(),
+          messageType: msgType as TeamMessage["messageType"],
+        };
+        store.addTeamMessage(sessionId, teamMsg);
+      }
+      continue;
+    }
+
+    // TeamDelete: remove team info
+    if (name === "TeamDelete") {
+      store.removeTeamInfo(sessionId);
+      continue;
     }
   }
 }
@@ -280,10 +399,11 @@ function handleParsedMessage(
         store.setStreamingStats(sessionId, { startedAt: Date.now() });
       }
 
-      // Extract tasks and changed files from tool_use content blocks
+      // Extract tasks, changed files, and team info from tool_use content blocks
       if (msg.content?.length) {
         extractTasksFromBlocks(sessionId, msg.content);
         extractChangedFilesFromBlocks(sessionId, msg.content);
+        extractTeamInfoFromBlocks(sessionId, msg.content);
       }
 
       break;
@@ -381,7 +501,7 @@ function handleParsedMessage(
           req.request_id,
         );
       }
-      // Also extract tasks and changed files from permission requests
+      // Also extract tasks, changed files, and team info from permission requests
       const req = data.request;
       if (req.tool_name && req.input) {
         const permBlocks = [{
@@ -392,6 +512,7 @@ function handleParsedMessage(
         }];
         extractTasksFromBlocks(sessionId, permBlocks);
         extractChangedFilesFromBlocks(sessionId, permBlocks);
+        extractTeamInfoFromBlocks(sessionId, permBlocks);
       }
       break;
     }
@@ -498,10 +619,11 @@ function handleParsedMessage(
             model: msg.model,
             stopReason: msg.stop_reason,
           });
-          // Also extract tasks and changed files from history
+          // Also extract tasks, changed files, and team info from history
           if (msg.content?.length) {
             extractTasksFromBlocks(sessionId, msg.content);
             extractChangedFilesFromBlocks(sessionId, msg.content);
+            extractTeamInfoFromBlocks(sessionId, msg.content);
           }
         } else if (histMsg.type === "result") {
           const r = histMsg.data;
@@ -516,14 +638,23 @@ function handleParsedMessage(
         }
       }
       if (chatMessages.length > 0) {
+        // Deduplicate within history itself (server may replay the same message twice)
+        const seen = new Set<string>();
+        const dedupedHistory = chatMessages.filter((m) => {
+          if (!m.id) return true; // keep messages without IDs
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        });
+
         const existing = store.messages.get(sessionId) || [];
         if (existing.length === 0) {
           // Initial connect: history is the full truth
-          store.setMessages(sessionId, chatMessages);
+          store.setMessages(sessionId, dedupedHistory);
         } else {
           // Reconnect: merge history with live messages, dedup by ID
           const existingIds = new Set(existing.map((m) => m.id));
-          const newFromHistory = chatMessages.filter((m) => !existingIds.has(m.id));
+          const newFromHistory = dedupedHistory.filter((m) => !existingIds.has(m.id));
           if (newFromHistory.length > 0) {
             // Merge and sort by timestamp to maintain chronological order
             const merged = [...newFromHistory, ...existing].sort(
@@ -622,6 +753,8 @@ export function disconnectSession(sessionId: string) {
     sockets.delete(sessionId);
   }
   processedToolUseIds.delete(sessionId);
+  processedTeamToolUseIds.delete(sessionId);
+  taskToolUseMemberMap.delete(sessionId);
   taskCounters.delete(sessionId);
   currentTurnFiles.delete(sessionId);
 }

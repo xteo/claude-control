@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage, ContentBlock } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
+import { TeamMessageBlock } from "./TeamMessageBlock.js";
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
@@ -106,9 +107,21 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
           if (group.kind === "content") {
             return <ContentBlockRenderer key={i} block={group.block} />;
           }
-          // Single tool_use renders as before
+          // Single tool_use renders as before (SendMessage gets special treatment)
           if (group.items.length === 1) {
             const item = group.items[0];
+            if (item.name === "SendMessage") {
+              return (
+                <TeamMessageBlock
+                  key={i}
+                  from="lead"
+                  to={item.input.type === "broadcast" ? null : String(item.input.recipient || "")}
+                  content={String(item.input.content || "")}
+                  summary={item.input.summary ? String(item.input.summary) : undefined}
+                  messageType={String(item.input.type || "message")}
+                />
+              );
+            }
             return <ToolBlock key={i} name={item.name} input={item.input} toolUseId={item.id} />;
           }
           // Grouped tool_uses

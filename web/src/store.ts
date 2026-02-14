@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, TaskItem, McpServerDetail } from "./types.js";
 import type { UpdateInfo, PRStatusResponse } from "./api.js";
+import type { TeamInfo, TeamMember, TeamMessage } from "./team-types.js";
 
 interface AppState {
   // Sessions
@@ -50,6 +51,11 @@ interface AppState {
 
   // Sidebar project grouping
   collapsedProjects: Set<string>;
+
+  // Team state (detected from tool_use blocks in assistant messages)
+  teamsBySession: Map<string, TeamInfo>;  // leadSessionId → TeamInfo
+  teamMessages: Map<string, TeamMessage[]>;  // leadSessionId → messages
+  collapsedTeams: Set<string>;  // collapsed team names in sidebar
 
   // Update info
   updateInfo: UpdateInfo | null;
@@ -116,6 +122,14 @@ interface AppState {
 
   // Sidebar project grouping actions
   toggleProjectCollapse: (projectKey: string) => void;
+
+  // Team actions
+  setTeamInfo: (sessionId: string, info: TeamInfo) => void;
+  removeTeamInfo: (sessionId: string) => void;
+  addTeamMember: (sessionId: string, member: TeamMember) => void;
+  updateTeamMemberStatus: (sessionId: string, memberName: string, status: TeamMember["status"]) => void;
+  addTeamMessage: (sessionId: string, msg: TeamMessage) => void;
+  toggleTeamCollapse: (teamName: string) => void;
 
   // Plan mode actions
   setPreviousPermissionMode: (sessionId: string, mode: string) => void;
@@ -204,6 +218,15 @@ function getInitialCollapsedProjects(): Set<string> {
   }
 }
 
+function getInitialCollapsedTeams(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    return new Set(JSON.parse(localStorage.getItem("cc-collapsed-teams") || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
 export const useStore = create<AppState>((set) => ({
   sessions: new Map(),
   sdkSessions: [],
@@ -224,6 +247,9 @@ export const useStore = create<AppState>((set) => ({
   prStatus: new Map(),
   mcpServers: new Map(),
   collapsedProjects: getInitialCollapsedProjects(),
+  teamsBySession: new Map(),
+  teamMessages: new Map(),
+  collapsedTeams: getInitialCollapsedTeams(),
   updateInfo: null,
   updateDismissedVersion: getInitialDismissedVersion(),
   darkMode: getInitialDarkMode(),
@@ -339,6 +365,10 @@ export const useStore = create<AppState>((set) => ({
       mcpServers.delete(sessionId);
       const prStatus = new Map(s.prStatus);
       prStatus.delete(sessionId);
+      const teamsBySession = new Map(s.teamsBySession);
+      teamsBySession.delete(sessionId);
+      const teamMessages = new Map(s.teamMessages);
+      teamMessages.delete(sessionId);
       const diffScope = new Map(s.diffScope);
       diffScope.delete(sessionId);
       const lastTurnChangedFiles = new Map(s.lastTurnChangedFiles);
@@ -365,6 +395,8 @@ export const useStore = create<AppState>((set) => ({
         diffPanelSelectedFile,
         mcpServers,
         prStatus,
+        teamsBySession,
+        teamMessages,
         diffScope,
         lastTurnChangedFiles,
         sdkSessions: s.sdkSessions.filter((sdk) => sdk.sessionId !== sessionId),
@@ -545,6 +577,67 @@ export const useStore = create<AppState>((set) => ({
       return { collapsedProjects };
     }),
 
+  setTeamInfo: (sessionId, info) =>
+    set((s) => {
+      const teamsBySession = new Map(s.teamsBySession);
+      teamsBySession.set(sessionId, info);
+      return { teamsBySession };
+    }),
+
+  removeTeamInfo: (sessionId) =>
+    set((s) => {
+      const teamsBySession = new Map(s.teamsBySession);
+      teamsBySession.delete(sessionId);
+      const teamMessages = new Map(s.teamMessages);
+      teamMessages.delete(sessionId);
+      return { teamsBySession, teamMessages };
+    }),
+
+  addTeamMember: (sessionId, member) =>
+    set((s) => {
+      const teamsBySession = new Map(s.teamsBySession);
+      const team = teamsBySession.get(sessionId);
+      if (team) {
+        teamsBySession.set(sessionId, { ...team, members: [...team.members, member] });
+      }
+      return { teamsBySession };
+    }),
+
+  updateTeamMemberStatus: (sessionId, memberName, status) =>
+    set((s) => {
+      const teamsBySession = new Map(s.teamsBySession);
+      const team = teamsBySession.get(sessionId);
+      if (team) {
+        teamsBySession.set(sessionId, {
+          ...team,
+          members: team.members.map((m) =>
+            m.name === memberName ? { ...m, status } : m,
+          ),
+        });
+      }
+      return { teamsBySession };
+    }),
+
+  addTeamMessage: (sessionId, msg) =>
+    set((s) => {
+      const teamMessages = new Map(s.teamMessages);
+      const msgs = [...(teamMessages.get(sessionId) || []), msg];
+      teamMessages.set(sessionId, msgs);
+      return { teamMessages };
+    }),
+
+  toggleTeamCollapse: (teamName) =>
+    set((s) => {
+      const collapsedTeams = new Set(s.collapsedTeams);
+      if (collapsedTeams.has(teamName)) {
+        collapsedTeams.delete(teamName);
+      } else {
+        collapsedTeams.add(teamName);
+      }
+      localStorage.setItem("cc-collapsed-teams", JSON.stringify(Array.from(collapsedTeams)));
+      return { collapsedTeams };
+    }),
+
   setPreviousPermissionMode: (sessionId, mode) =>
     set((s) => {
       const previousPermissionMode = new Map(s.previousPermissionMode);
@@ -639,6 +732,9 @@ export const useStore = create<AppState>((set) => ({
       recentlyRenamed: new Set(),
       mcpServers: new Map(),
       prStatus: new Map(),
+      teamsBySession: new Map(),
+      teamMessages: new Map(),
+      collapsedTeams: new Set(),
       activeTab: "chat" as const,
       diffPanelSelectedFile: new Map(),
       terminalOpen: false,

@@ -14,6 +14,8 @@ const TOOL_ICONS: Record<string, string> = {
   TaskCreate: "list",
   TaskUpdate: "list",
   SendMessage: "message",
+  TeamCreate: "team",
+  TeamDelete: "team",
   // Codex tool types (mapped by codex-adapter)
   web_search: "globe",
   mcp_tool_call: "tool",
@@ -32,6 +34,9 @@ export function getToolLabel(name: string): string {
   if (name === "Grep") return "Search Content";
   if (name === "web_search") return "Web Search";
   if (name === "mcp_tool_call") return "MCP Tool";
+  if (name === "TeamCreate") return "Create Team";
+  if (name === "TeamDelete") return "Delete Team";
+  if (name === "SendMessage") return "Agent Message";
   // Codex MCP tools come as "mcp:server:tool"
   if (name.startsWith("mcp:")) return name.split(":").slice(1).join(":");
   return name;
@@ -142,6 +147,13 @@ export function getPreview(name: string, input: Record<string, unknown>): string
   if (name === "Glob" && input.pattern) return String(input.pattern);
   if (name === "Grep" && input.pattern) return String(input.pattern);
   if (name === "WebSearch" && input.query) return String(input.query);
+  if (name === "SendMessage") {
+    const recipient = input.recipient as string;
+    const summary = input.summary as string;
+    if (recipient) return `→ ${recipient}${summary ? `: ${summary}` : ""}`;
+    if (input.type === "broadcast") return "broadcast";
+    return "";
+  }
   return "";
 }
 
@@ -184,6 +196,15 @@ export function ToolIcon({ type }: { type: string }) {
     return (
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className={cls}>
         <path d="M14 10a1 1 0 01-1 1H5l-3 3V3a1 1 0 011-1h10a1 1 0 011 1v7z" />
+      </svg>
+    );
+  }
+  if (type === "team") {
+    return (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className={cls}>
+        <circle cx="6" cy="5" r="2" />
+        <circle cx="11" cy="5" r="2" />
+        <path d="M2 13c0-2.2 1.8-4 4-4s4 1.8 4 4M7 13c0-2.2 1.8-4 4-4s4 1.8 4 4" />
       </svg>
     );
   }

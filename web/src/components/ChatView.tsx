@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { MessageFeed } from "./MessageFeed.js";
 import { Composer } from "./Composer.js";
 import { PermissionBanner } from "./PermissionBanner.js";
+import { TeamBreadcrumb } from "./TeamBreadcrumb.js";
 
 export function ChatView({ sessionId }: { sessionId: string }) {
   const sessionPerms = useStore((s) => s.pendingPermissions.get(sessionId));
@@ -42,6 +43,9 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           </span>
         </div>
       )}
+
+      {/* Team breadcrumb */}
+      <TeamBreadcrumb sessionId={sessionId} />
 
       {/* Message feed */}
       <MessageFeed sessionId={sessionId} />

@@ -3,8 +3,10 @@ import { useStore } from "../store.js";
 import { api, type UsageLimits, type GitHubPRInfo } from "../api.js";
 import type { TaskItem } from "../types.js";
 import { McpSection } from "./McpPanel.js";
+import { TeamOverview } from "./TeamOverview.js";
 
 const EMPTY_TASKS: TaskItem[] = [];
+const EMPTY_TEAM_MESSAGES: never[] = [];
 const POLL_INTERVAL = 60_000;
 
 // Module-level cache — survives session switches so limits don't flash empty
@@ -310,6 +312,8 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
   const sdkBackendType = useStore((s) => s.sdkSessions.find((x) => x.sessionId === sessionId)?.backendType);
   const taskPanelOpen = useStore((s) => s.taskPanelOpen);
   const setTaskPanelOpen = useStore((s) => s.setTaskPanelOpen);
+  const teamInfo = useStore((s) => s.teamsBySession.get(sessionId));
+  const teamMessages = useStore((s) => s.teamMessages.get(sessionId) || EMPTY_TEAM_MESSAGES);
 
   if (!taskPanelOpen) return null;
 
@@ -349,6 +353,21 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
 
         {/* MCP servers */}
         <McpSection sessionId={sessionId} />
+
+        {/* Team overview */}
+        {teamInfo && (
+          <div className="px-3 py-3 border-b border-cc-border">
+            <TeamOverview
+              teamName={teamInfo.teamName}
+              members={teamInfo.members}
+              messages={teamMessages}
+              taskProgress={{
+                completed: tasks.filter((t) => t.status === "completed").length,
+                total: tasks.length,
+              }}
+            />
+          </div>
+        )}
 
         {showTasks && (
           <>

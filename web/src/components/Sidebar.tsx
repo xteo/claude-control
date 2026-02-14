@@ -6,6 +6,7 @@ import { ProjectGroup } from "./ProjectGroup.js";
 import { SessionItem } from "./SessionItem.js";
 import { CollectionGroup } from "./CollectionGroup.js";
 import { CreateCollectionButton } from "./CreateCollectionButton.js";
+import { TeamGroup } from "./TeamGroup.js";
 import { useSidebarGroups } from "../collections/use-sidebar-groups.js";
 import { useCollectionsStore } from "../collections/store.js";
 import { hasDraggedSession, getSessionDragData } from "../collections/drag-reorder.js";
@@ -30,6 +31,10 @@ export function Sidebar() {
   const pendingPermissions = useStore((s) => s.pendingPermissions);
   const collapsedProjects = useStore((s) => s.collapsedProjects);
   const toggleProjectCollapse = useStore((s) => s.toggleProjectCollapse);
+  const teamsBySession = useStore((s) => s.teamsBySession);
+  const collapsedTeams = useStore((s) => s.collapsedTeams);
+  const toggleTeamCollapse = useStore((s) => s.toggleTeamCollapse);
+  const sessionTasks = useStore((s) => s.sessionTasks);
   const isSettingsPage = hash === "#/settings";
   const isTerminalPage = hash === "#/terminal";
   const isEnvironmentsPage = hash === "#/environments";
@@ -357,6 +362,29 @@ export function Sidebar() {
                 {...sessionItemProps}
               />
             ))}
+
+            {/* Team groups for sessions with team info */}
+            {Array.from(teamsBySession.entries()).map(([leadSessionId, teamInfo]) => {
+              const tasks = sessionTasks.get(leadSessionId) || [];
+              const taskProgress = {
+                completed: tasks.filter((t) => t.status === "completed").length,
+                total: tasks.length,
+              };
+              return (
+                <TeamGroup
+                  key={`team-${leadSessionId}`}
+                  teamName={teamInfo.teamName}
+                  leadSessionId={leadSessionId}
+                  members={teamInfo.members}
+                  taskProgress={taskProgress}
+                  isCollapsed={collapsedTeams.has(teamInfo.teamName)}
+                  onToggleCollapse={toggleTeamCollapse}
+                  onSelectSession={handleSelectSession}
+                  currentSessionId={currentSessionId}
+                  leadSessionName={sessionNames.get(leadSessionId)}
+                />
+              );
+            })}
 
             {archivedSessions.length > 0 && (
               <div className="mt-2 pt-2 border-t border-cc-border">

@@ -11,6 +11,10 @@ import { CreateCollectionButton } from "./CreateCollectionButton.js";
 import { UpdateBanner } from "./UpdateBanner.js";
 import { ClaudeMdEditor } from "./ClaudeMdEditor.js";
 import { ChatView } from "./ChatView.js";
+import { TeamMessageBlock } from "./TeamMessageBlock.js";
+import { TeamOverview } from "./TeamOverview.js";
+import { TeamGroup } from "./TeamGroup.js";
+import { TeamBreadcrumb } from "./TeamBreadcrumb.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import type { PermissionRequest, ChatMessage, ContentBlock, SessionState, McpServerDetail } from "../types.js";
@@ -1003,6 +1007,68 @@ export function Playground() {
           </div>
         </Section>
 
+        {/* ─── Team Group (Sidebar) ──────────────────────────────── */}
+        <Section title="Team Group (Sidebar)" description="Team display in the sidebar showing lead session and teammate agents">
+          <div className="space-y-4">
+            <Card label="Expanded team with members">
+              <div className="w-[260px] bg-cc-sidebar border border-cc-border rounded-xl overflow-hidden p-1">
+                <PlaygroundTeamGroup collapsed={false} />
+              </div>
+            </Card>
+            <Card label="Collapsed team">
+              <div className="w-[260px] bg-cc-sidebar border border-cc-border rounded-xl overflow-hidden p-1">
+                <PlaygroundTeamGroup collapsed={true} />
+              </div>
+            </Card>
+          </div>
+        </Section>
+
+        {/* ─── Team Messages ──────────────────────────────── */}
+        <Section title="Team Messages" description="Inter-agent communication displayed as styled chat bubbles">
+          <div className="space-y-4 max-w-3xl">
+            <Card label="Direct message (agent to lead)">
+              <TeamMessageBlock from="researcher" to="team-lead" content="Found 3 auth patterns in the codebase. The JWT module at src/auth/jwt.ts handles token verification." summary="Found auth patterns" messageType="message" timestamp={Date.now() - 30000} />
+            </Card>
+            <Card label="Broadcast message">
+              <TeamMessageBlock from="team-lead" to={null} content="Great progress everyone. Please wrap up your current tasks and send findings." summary="Wrap up request" messageType="broadcast" timestamp={Date.now() - 15000} />
+            </Card>
+            <Card label="Shutdown request">
+              <TeamMessageBlock from="team-lead" to="researcher" content="Task complete, wrapping up the session" summary="Shutdown request" messageType="shutdown_request" timestamp={Date.now()} />
+            </Card>
+            <Card label="Long message (collapsible)">
+              <TeamMessageBlock from="researcher" to="team-lead" content={"I've completed a thorough analysis of the authentication patterns across the codebase. Here are my findings:\n\n1. JWT-based auth in src/auth/jwt.ts - handles token creation and verification with RS256 signing\n2. Session-based auth in src/auth/session.ts - uses express-session with Redis store for stateful sessions\n3. OAuth2 integration in src/auth/oauth.ts - supports Google and GitHub providers with PKCE flow\n\nEach pattern has its own middleware and they are all registered in the main router. The JWT approach is the most recent addition and appears to be the recommended path forward based on comments in the code."} summary="Auth analysis complete" messageType="message" timestamp={Date.now() - 5000} />
+            </Card>
+          </div>
+        </Section>
+
+        {/* ─── Team Overview ──────────────────────────────── */}
+        <Section title="Team Overview" description="Team status panel shown in TaskPanel when viewing a team session">
+          <div className="w-[280px]">
+            <TeamOverview
+              teamName="blog-qa"
+              members={[
+                { name: "researcher", agentType: "Explore", status: "active" },
+                { name: "writer", agentType: "general-purpose", status: "idle" },
+                { name: "reviewer", agentType: "general-purpose", status: "active" },
+              ]}
+              messages={[
+                { id: "tm-1", from: "researcher", to: "team-lead", content: "Found patterns...", summary: "Found patterns", timestamp: Date.now() - 30000, messageType: "message" },
+                { id: "tm-2", from: "writer", to: "team-lead", content: "Draft complete", summary: "Draft done", timestamp: Date.now() - 15000, messageType: "message" },
+              ]}
+              taskProgress={{ completed: 3, total: 6 }}
+            />
+          </div>
+        </Section>
+
+        {/* ─── Team Breadcrumb ──────────────────────────────── */}
+        <Section title="Team Breadcrumb" description="Info bar shown at the top of ChatView when viewing a team lead session">
+          <div className="max-w-3xl">
+            <Card label="Team breadcrumb with active members">
+              <PlaygroundTeamBreadcrumb />
+            </Card>
+          </div>
+        </Section>
+
         {/* ─── Diff Viewer ──────────────────────────────── */}
         <Section title="Diff Viewer" description="Unified diff rendering with word-level highlighting — used in ToolBlock, PermissionBanner, and DiffPanel">
           <div className="space-y-4 max-w-3xl">
@@ -1478,6 +1544,59 @@ function PlaygroundCollectionGroup({ name, collectionId, sessionCount }: { name:
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Playground Team Breadcrumb (sets store state for preview) ───────────────
+
+const BREADCRUMB_SESSION_ID = "pg-team-breadcrumb";
+
+function PlaygroundTeamBreadcrumb() {
+  useEffect(() => {
+    const store = useStore.getState();
+    store.setTeamInfo(BREADCRUMB_SESSION_ID, {
+      teamName: "blog-qa",
+      leadSessionId: BREADCRUMB_SESSION_ID,
+      members: [
+        { name: "researcher", agentType: "Explore", status: "active" },
+        { name: "writer", agentType: "general-purpose", status: "idle" },
+        { name: "reviewer", agentType: "general-purpose", status: "active" },
+      ],
+      createdAt: Date.now(),
+    });
+    return () => {
+      useStore.getState().removeTeamInfo(BREADCRUMB_SESSION_ID);
+    };
+  }, []);
+
+  return (
+    <div className="border border-cc-border rounded-xl overflow-hidden">
+      <TeamBreadcrumb sessionId={BREADCRUMB_SESSION_ID} />
+    </div>
+  );
+}
+
+// ─── Playground Team Group (standalone sidebar preview) ─────────────────────
+
+function PlaygroundTeamGroup({ collapsed }: { collapsed: boolean }) {
+  const [isCollapsed, setIsCollapsed] = useState(collapsed);
+
+  return (
+    <TeamGroup
+      teamName="blog-qa"
+      leadSessionId="pg-team-lead"
+      members={[
+        { name: "researcher", agentType: "Explore", status: "active" },
+        { name: "writer", agentType: "general-purpose", status: "idle" },
+        { name: "reviewer", agentType: "general-purpose", status: "active" },
+      ]}
+      taskProgress={{ completed: 3, total: 6 }}
+      isCollapsed={isCollapsed}
+      onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+      onSelectSession={() => {}}
+      currentSessionId={null}
+      leadSessionName="Blog QA Lead"
+    />
   );
 }
 
