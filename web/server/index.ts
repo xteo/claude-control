@@ -25,7 +25,6 @@ import { startPeriodicCheck, setServiceMode } from "./update-checker.js";
 import { isRunningAsService } from "./service.js";
 import { createAuthRoutes } from "./auth-routes.js";
 import { authMiddleware, validateWsCookie } from "./auth-middleware.js";
-import { isAuthConfigured } from "./auth-manager.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { ServerWebSocket } from "bun";
 
@@ -133,7 +132,7 @@ const server = Bun.serve<SocketData>({
     // ── Browser WebSocket — connects to a specific session ─────────────
     const browserMatch = url.pathname.match(/^\/ws\/browser\/([a-f0-9-]+)$/);
     if (browserMatch) {
-      if (isAuthConfigured() && !validateWsCookie(req)) {
+      if (!validateWsCookie(req)) {
         return new Response("Unauthorized", { status: 401 });
       }
       const sessionId = browserMatch[1];
@@ -147,7 +146,7 @@ const server = Bun.serve<SocketData>({
     // ── Terminal WebSocket — embedded terminal PTY connection ─────────
     const termMatch = url.pathname.match(/^\/ws\/terminal\/([a-f0-9-]+)$/);
     if (termMatch) {
-      if (isAuthConfigured() && !validateWsCookie(req)) {
+      if (!validateWsCookie(req)) {
         return new Response("Unauthorized", { status: 401 });
       }
       const terminalId = termMatch[1];
