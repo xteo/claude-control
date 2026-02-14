@@ -1,7 +1,9 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { useStore } from "../store.js";
 import { MessageBubble } from "./MessageBubble.js";
+import { ThreadTurnGroup } from "./ThreadTurnGroup.js";
 import { getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
+import { groupIntoThreadTurns } from "../utils/thread-grouping.js";
 import type { ChatMessage, ContentBlock } from "../types.js";
 
 const FEED_PAGE_SIZE = 100;
@@ -371,6 +373,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const streamingStartedAt = useStore((s) => s.streamingStartedAt.get(sessionId));
   const streamingOutputTokens = useStore((s) => s.streamingOutputTokens.get(sessionId));
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
+  const threadMode = useStore((s) => s.threadMode);
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isNearBottom = useRef(true);
@@ -378,6 +381,10 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE);
 
   const grouped = useMemo(() => groupMessages(messages), [messages]);
+  const threadTurns = useMemo(
+    () => (threadMode ? groupIntoThreadTurns(messages) : []),
+    [threadMode, messages],
+  );
 
   // Reset visible count when switching sessions
   useEffect(() => {
@@ -454,7 +461,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
         className="h-full overflow-y-auto scroll-smooth px-3 sm:px-4 py-4 sm:py-6"
       >
         <div className="max-w-3xl mx-auto space-y-3 sm:space-y-5">
-          {hasMore && (
+          {!threadMode && hasMore && (
             <div className="flex justify-center pb-2">
               <button
                 onClick={handleLoadMore}
@@ -467,7 +474,13 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
               </button>
             </div>
           )}
-          <FeedEntries entries={visibleEntries} />
+          {threadMode ? (
+            threadTurns.map((turn, i) => (
+              <ThreadTurnGroup key={turn.userMessage.id || i} turn={turn} />
+            ))
+          ) : (
+            <FeedEntries entries={visibleEntries} />
+          )}
 
           {/* Streaming indicator */}
           {streamingText && (

@@ -23,6 +23,8 @@ export function TopBar() {
   const setTaskPanelOpen = useStore((s) => s.setTaskPanelOpen);
   const activeTab = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
+  const threadMode = useStore((s) => s.threadMode);
+  const toggleThreadMode = useStore((s) => s.toggleThreadMode);
   const [claudeMdOpen, setClaudeMdOpen] = useState(false);
   const changedFilesCount = useStore((s) => {
     if (!currentSessionId) return 0;
@@ -133,6 +135,29 @@ export function TopBar() {
               )}
             </button>
           </div>
+
+          {/* Thread mode toggle */}
+          {activeTab === "chat" && (
+            <button
+              onClick={toggleThreadMode}
+              className={`flex items-center justify-center w-7 h-7 rounded-lg transition-colors cursor-pointer ${
+                threadMode
+                  ? "text-cc-primary bg-cc-active"
+                  : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+              }`}
+              title={threadMode ? "Switch to detail view" : "Switch to thread view"}
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                {threadMode ? (
+                  // Thread view icon (stacked lines = summary view)
+                  <path d="M2 3.5A.5.5 0 012.5 3h11a.5.5 0 010 1h-11A.5.5 0 012 3.5zm2 4A.5.5 0 014.5 7h7a.5.5 0 010 1h-7A.5.5 0 014 7.5zm-2 4a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z" />
+                ) : (
+                  // Detail view icon (list = all messages)
+                  <path d="M2.5 3a.5.5 0 000 1h11a.5.5 0 000-1h-11zM2.5 5.5a.5.5 0 000 1h11a.5.5 0 000-1h-11zM2 8.5a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5zm.5 2a.5.5 0 000 1h11a.5.5 0 000-1h-11zM2 13.5a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5z" />
+                )}
+              </svg>
+            </button>
+          )}
 
           {/* CLAUDE.md editor */}
           {cwd && (

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { PermissionBanner } from "./PermissionBanner.js";
 import { MessageBubble } from "./MessageBubble.js";
+import { ThreadTurnGroup } from "./ThreadTurnGroup.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { DiffFileTree } from "./DiffFileTree.js";
@@ -18,6 +19,7 @@ import type { TaskItem } from "../types.js";
 import type { UpdateInfo, GitHubPRInfo } from "../api.js";
 import { GitHubPRDisplay } from "./TaskPanel.js";
 import type { DiffFileInfo } from "../lib/diff-stats.js";
+import type { ThreadTurn } from "../utils/thread-grouping.js";
 
 // ─── Mock Data ──────────────────────────────────────────────────────────────
 
@@ -433,6 +435,62 @@ const MOCK_MCP_SERVERS: McpServerDetail[] = [
   },
 ];
 
+// Thread Mode mock turn
+const MOCK_THREAD_TURN: ThreadTurn = {
+  userMessage: MSG_USER,
+  workTrace: [
+    MSG_ASSISTANT_TOOLS,
+    {
+      id: "thread-trace-1",
+      role: "assistant",
+      content: "",
+      contentBlocks: [
+        { type: "thinking", thinking: "I need to check the session store and middleware files to understand the current auth flow..." },
+        { type: "tool_use", id: "tt-1", name: "Read", input: { file_path: "src/auth/session.ts" } },
+        { type: "tool_result", tool_use_id: "tt-1", content: "export function getSession(req) { ... }" },
+        { type: "tool_use", id: "tt-2", name: "Edit", input: { file_path: "src/auth/middleware.ts", old_string: "...", new_string: "..." } },
+      ],
+      timestamp: Date.now() - 42000,
+    },
+  ],
+  finalAnswer: MSG_ASSISTANT,
+  stats: {
+    messageCount: 2,
+    toolCallCount: 4,
+    thinkingBlockCount: 1,
+    durationMs: 15000,
+    toolNames: ["Glob", "Read", "Edit"],
+  },
+};
+
+const MOCK_THREAD_TURN_NO_ANSWER: ThreadTurn = {
+  userMessage: {
+    id: "thread-user-2",
+    role: "user",
+    content: "Now run the full test suite and fix any failures",
+    timestamp: Date.now() - 10000,
+  },
+  workTrace: [
+    {
+      id: "thread-trace-2",
+      role: "assistant",
+      content: "",
+      contentBlocks: [
+        { type: "tool_use", id: "tt-3", name: "Bash", input: { command: "npm test -- --grep auth" } },
+      ],
+      timestamp: Date.now() - 8000,
+    },
+  ],
+  finalAnswer: null,
+  stats: {
+    messageCount: 1,
+    toolCallCount: 1,
+    thinkingBlockCount: 0,
+    durationMs: 2000,
+    toolNames: ["Bash"],
+  },
+};
+
 // ─── Playground Component ───────────────────────────────────────────────────
 
 export function Playground() {
@@ -581,6 +639,22 @@ export function Playground() {
         <Section title="Real Chat Stack" description="Integrated ChatView using real MessageFeed + PermissionBanner + Composer components">
           <div data-testid="playground-real-chat-stack" className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[620px]">
             <ChatView sessionId={MOCK_SESSION_ID} />
+          </div>
+        </Section>
+
+        {/* ─── Thread Mode ──────────────────────────────── */}
+        <Section title="Thread Mode" description="Collapsed work trace between user prompts and final answers — toggle via TopBar icon">
+          <div className="space-y-4 max-w-3xl">
+            <Card label="Turn with work trace + final answer">
+              <div className="space-y-3 sm:space-y-5">
+                <ThreadTurnGroup turn={MOCK_THREAD_TURN} />
+              </div>
+            </Card>
+            <Card label="Turn still in progress (no final answer yet)">
+              <div className="space-y-3 sm:space-y-5">
+                <ThreadTurnGroup turn={MOCK_THREAD_TURN_NO_ANSWER} />
+              </div>
+            </Card>
           </div>
         </Section>
 

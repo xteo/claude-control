@@ -64,10 +64,13 @@ interface AppState {
   homeResetKey: number;
   activeTab: "chat" | "diff";
   diffPanelSelectedFile: Map<string, string>;
+  threadMode: boolean;
 
   // Actions
   setDarkMode: (v: boolean) => void;
   toggleDarkMode: () => void;
+  setThreadMode: (v: boolean) => void;
+  toggleThreadMode: () => void;
   setNotificationSound: (v: boolean) => void;
   toggleNotificationSound: () => void;
   setNotificationDesktop: (v: boolean) => void;
@@ -195,6 +198,11 @@ function getInitialDismissedVersion(): string | null {
   return localStorage.getItem("cc-update-dismissed") || null;
 }
 
+function getInitialThreadMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem("cc-thread-mode") === "true";
+}
+
 function getInitialCollapsedProjects(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
@@ -234,6 +242,7 @@ export const useStore = create<AppState>((set) => ({
   homeResetKey: 0,
   activeTab: "chat",
   diffPanelSelectedFile: new Map(),
+  threadMode: getInitialThreadMode(),
   terminalOpen: false,
   terminalCwd: null,
   terminalId: null,
@@ -249,6 +258,16 @@ export const useStore = create<AppState>((set) => ({
       const next = !s.darkMode;
       localStorage.setItem("cc-dark-mode", String(next));
       return { darkMode: next };
+    }),
+  setThreadMode: (v) => {
+    localStorage.setItem("cc-thread-mode", String(v));
+    set({ threadMode: v });
+  },
+  toggleThreadMode: () =>
+    set((s) => {
+      const next = !s.threadMode;
+      localStorage.setItem("cc-thread-mode", String(next));
+      return { threadMode: next };
     }),
   setNotificationSound: (v) => {
     localStorage.setItem("cc-notification-sound", String(v));
