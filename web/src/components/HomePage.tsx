@@ -9,11 +9,20 @@ import { getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMod
 import type { BackendType } from "../types.js";
 import { EnvManager } from "./EnvManager.js";
 import { FolderPicker } from "./FolderPicker.js";
+import { DictationWaveform } from "./DictationWaveform.js";
 
 interface ImageAttachment {
   name: string;
   base64: string;
   mediaType: string;
+}
+
+const DICTATION_BAR_COUNT = 56;
+
+function supportsDictationInBrowser(): boolean {
+  return typeof navigator !== "undefined"
+    && !!navigator.mediaDevices?.getUserMedia
+    && typeof MediaRecorder !== "undefined";
 }
 
 function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: string }> {
@@ -27,6 +36,24 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: stri
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function formatDuration(totalSeconds: number): string {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function mergeComposerText(existing: string, extra: string): string {
+  const left = existing.trim();
+  const right = extra.trim();
+  if (!left) return right;
+  if (!right) return left;
+  return `${left} ${right}`;
+}
+
+function defaultWaveform(): number[] {
+  return Array.from({ length: DICTATION_BAR_COUNT }, (_, i) => 0.01 + ((i % 5) * 0.005));
 }
 
 let idCounter = 0;
@@ -52,6 +79,11 @@ export function HomePage() {
     localStorage.getItem("cc-codex-internet-access") === "1",
   );
   const [showYoloConfirm, setShowYoloConfirm] = useState(false);
+  const [dictationStatus, setDictationStatus] = useState<"idle" | "recording" | "transcribing">("idle");
+  const [dictationLevels, setDictationLevels] = useState<number[]>(() => defaultWaveform());
+  const [dictationSeconds, setDictationSeconds] = useState(0);
+  const [showStopDictationHint, setShowStopDictationHint] = useState(false);
+  const [queueSendAfterTranscription, setQueueSendAfterTranscription] = useState(false);
 
   const MODELS = dynamicModels || getModelsForBackend(backend);
   const MODES = getModesForBackend(backend);
@@ -88,9 +120,19 @@ export function HomePage() {
   const modeDropdownRef = useRef<HTMLDivElement>(null);
   const envDropdownRef = useRef<HTMLDivElement>(null);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const waveformRafRef = useRef<number | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const queuedSendRef = useRef(false);
 
   const setCurrentSession = useStore((s) => s.setCurrentSession);
   const currentSessionId = useStore((s) => s.currentSessionId);
+  const isRecording = dictationStatus === "recording";
+  const isTranscribing = dictationStatus === "transcribing";
+  const canUseMic = supportsDictationInBrowser();
 
   // Auto-focus textarea (desktop only — on mobile it triggers the keyboard immediately)
   useEffect(() => {
@@ -184,6 +226,42 @@ export function HomePage() {
     }
   }, [gitRepoInfo]);
 
+  // Dictation timer
+  useEffect(() => {
+    if (!isRecording) return;
+    const timer = window.setInterval(() => {
+      setDictationSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isRecording]);
+
+  // Auto-hide stop hint bubble
+  useEffect(() => {
+    if (!showStopDictationHint || !isRecording) return;
+    const timeout = window.setTimeout(() => setShowStopDictationHint(false), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [isRecording, showStopDictationHint]);
+
+  // Cleanup dictation resources on unmount
+  useEffect(() => {
+    return () => {
+      if (waveformRafRef.current !== null) {
+        window.cancelAnimationFrame(waveformRafRef.current);
+        waveformRafRef.current = null;
+      }
+      mediaRecorderRef.current = null;
+      analyserRef.current = null;
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+    };
+  }, []);
+
 
   const selectedModel = MODELS.find((m) => m.value === model) || MODELS[0];
   const selectedMode = MODES.find((m) => m.value === mode) || MODES[0];
@@ -231,6 +309,186 @@ export function HomePage() {
     ta.style.height = Math.min(ta.scrollHeight, 300) + "px";
   }
 
+  function syncTextareaHeight() {
+    if (!textareaRef.current) return;
+    textareaRef.current.style.height = "auto";
+    textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 300) + "px";
+  }
+
+  function cleanupDictationResources() {
+    if (waveformRafRef.current !== null) {
+      window.cancelAnimationFrame(waveformRafRef.current);
+      waveformRafRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+    analyserRef.current = null;
+    recordedChunksRef.current = [];
+    setDictationLevels(defaultWaveform());
+  }
+
+  async function startDictation() {
+    if (sending || isRecording || isTranscribing) return;
+    if (!canUseMic) {
+      setError("Microphone dictation is not supported by this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      recordedChunksRef.current = [];
+
+      const recorderOptions: MediaRecorderOptions = {};
+      if (typeof MediaRecorder.isTypeSupported === "function") {
+        const preferredMimeTypes = [
+          "audio/webm;codecs=opus",
+          "audio/webm",
+          "audio/mp4",
+          "audio/ogg;codecs=opus",
+        ];
+        const selectedMimeType = preferredMimeTypes.find((type) => MediaRecorder.isTypeSupported(type));
+        if (selectedMimeType) recorderOptions.mimeType = selectedMimeType;
+      }
+      const recorder = Object.keys(recorderOptions).length > 0
+        ? new MediaRecorder(stream, recorderOptions)
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioContextCtor) {
+        const audioContext = new AudioContextCtor();
+        audioContextRef.current = audioContext;
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+
+        const timeData = new Uint8Array(analyser.fftSize);
+        let lastPaint = 0;
+        const tick = (timestamp: number) => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteTimeDomainData(timeData);
+          let sumSquares = 0;
+          for (let i = 0; i < timeData.length; i += 1) {
+            const centered = (timeData[i] - 128) / 128;
+            sumSquares += centered * centered;
+          }
+          const rms = Math.sqrt(sumSquares / timeData.length);
+          const normalized = Math.min(1, Math.max(0.02, rms * 7));
+
+          if (timestamp - lastPaint >= 45) {
+            setDictationLevels((prev) => {
+              const next = prev.slice(1);
+              next.push(normalized);
+              return next;
+            });
+            lastPaint = timestamp;
+          }
+
+          waveformRafRef.current = window.requestAnimationFrame(tick);
+        };
+        waveformRafRef.current = window.requestAnimationFrame(tick);
+      }
+
+      recorder.start(140);
+      setDictationSeconds(0);
+      setQueueSendAfterTranscription(false);
+      queuedSendRef.current = false;
+      setShowStopDictationHint(true);
+      setDictationStatus("recording");
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      setError(`Unable to start microphone dictation: ${reason}`);
+      cleanupDictationResources();
+      setDictationStatus("idle");
+    }
+  }
+
+  function stopDictationCapture(): Promise<Blob | null> {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return Promise.resolve(null);
+
+    setShowStopDictationHint(false);
+    setDictationStatus("transcribing");
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        const mimeType = recorder.mimeType || "audio/webm";
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        cleanupDictationResources();
+        resolve(blob.size > 0 ? blob : null);
+      };
+      recorder.addEventListener("stop", finish, { once: true });
+      try {
+        recorder.stop();
+      } catch {
+        finish();
+      }
+    });
+  }
+
+  async function transcribeAndApply(blob: Blob, forceSend: boolean) {
+    try {
+      const preferredLanguage = typeof navigator !== "undefined" && navigator.language
+        ? navigator.language.split("-")[0]
+        : undefined;
+      const result = await api.transcribeAudio(blob, preferredLanguage);
+      const transcript = (result.text || "").trim();
+      if (!transcript) {
+        setError("Dictation captured audio, but no speech was recognized.");
+        return;
+      }
+
+      const merged = mergeComposerText(text, transcript);
+      setText(merged);
+      window.requestAnimationFrame(() => syncTextareaHeight());
+
+      if (forceSend || queuedSendRef.current) {
+        sendDraft(merged);
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      setError(`Dictation failed: ${reason}`);
+    } finally {
+      setDictationStatus("idle");
+      setQueueSendAfterTranscription(false);
+      queuedSendRef.current = false;
+      textareaRef.current?.focus();
+    }
+  }
+
+  async function stopDictationAndTranscribe(forceSend: boolean) {
+    const blob = await stopDictationCapture();
+    if (!blob) {
+      setDictationStatus("idle");
+      if (forceSend || queuedSendRef.current) {
+        setError("Dictation stopped without captured audio.");
+      }
+      setQueueSendAfterTranscription(false);
+      queuedSendRef.current = false;
+      return;
+    }
+    await transcribeAndApply(blob, forceSend);
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Tab" && e.shiftKey) {
       e.preventDefault();
@@ -246,8 +504,8 @@ export function HomePage() {
     }
   }
 
-  async function handleSend() {
-    const msg = text.trim();
+  function sendDraft(msgInput: string) {
+    const msg = msgInput.trim();
     if (!msg || sending) return;
 
     setSending(true);
@@ -260,15 +518,28 @@ export function HomePage() {
     if (gitRepoInfo) {
       const effectiveBranch = useWorktree ? worktreeBranch : gitRepoInfo.currentBranch;
       if (effectiveBranch && effectiveBranch === gitRepoInfo.currentBranch) {
-        const branchInfo = branches.find(b => b.name === effectiveBranch && !b.isRemote);
+        const branchInfo = branches.find((b) => b.name === effectiveBranch && !b.isRemote);
         if (branchInfo && branchInfo.behind > 0) {
           setPullPrompt({ behind: branchInfo.behind, branchName: effectiveBranch });
-          return; // Pause — user must choose pull/skip/cancel
+          return;
         }
       }
     }
 
-    await doCreateSession(msg);
+    void doCreateSession(msg);
+  }
+
+  function handleSend() {
+    if (isRecording) {
+      void stopDictationAndTranscribe(true);
+      return;
+    }
+    if (isTranscribing) {
+      setQueueSendAfterTranscription(true);
+      queuedSendRef.current = true;
+      return;
+    }
+    sendDraft(text);
   }
 
   async function doCreateSession(msg: string) {
@@ -387,7 +658,7 @@ export function HomePage() {
     setSending(false);
   }
 
-  const canSend = text.trim().length > 0 && !sending;
+  const canSend = !sending && (isRecording || isTranscribing || text.trim().length > 0);
 
   return (
     <div className="flex-1 h-full flex items-start justify-center px-3 sm:px-4 pt-[15vh] sm:pt-[20vh] overflow-y-auto">
@@ -548,8 +819,63 @@ export function HomePage() {
               )}
             </div>
 
-            {/* Right: image placeholder + send */}
-            <div className="flex items-center gap-1.5">
+            {/* Right: dictation + image + send */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="relative w-8 h-8 shrink-0">
+                {isRecording || isTranscribing ? (
+                  <div className="absolute right-0 top-0 flex items-center gap-2 h-8 rounded-full border border-cc-border bg-cc-card pl-2 pr-1 min-w-[165px] sm:min-w-[240px] z-10">
+                    <DictationWaveform levels={dictationLevels} active={isRecording} />
+                    <span className="text-[12px] tabular-nums text-cc-muted shrink-0">
+                      {isTranscribing ? "..." : formatDuration(dictationSeconds)}
+                    </span>
+                    <div className="relative">
+                      {isRecording && showStopDictationHint && (
+                        <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 rounded-full border border-cc-border bg-cc-card text-[11px] text-cc-fg whitespace-nowrap shadow-sm">
+                          Stop dictation
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (isRecording) void stopDictationAndTranscribe(false);
+                        }}
+                        disabled={!isRecording}
+                        className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
+                          isRecording
+                            ? "bg-cc-hover hover:bg-cc-hover/80 text-cc-fg cursor-pointer"
+                            : "bg-cc-hover text-cc-muted cursor-not-allowed"
+                        }`}
+                        title={isRecording ? "Stop dictation" : "Transcribing"}
+                      >
+                        {isRecording ? (
+                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                            <rect x="3" y="3" width="10" height="10" rx="1.2" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 animate-spin">
+                            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" strokeDasharray="30" strokeDashoffset="10" strokeLinecap="round" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => void startDictation()}
+                    disabled={!canUseMic}
+                    className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
+                      canUseMic
+                        ? "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                        : "text-cc-muted opacity-30 cursor-not-allowed"
+                    }`}
+                    title={canUseMic ? "Start dictation" : "Microphone not available"}
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                      <path d="M8 1a2.5 2.5 0 00-2.5 2.5v4a2.5 2.5 0 105 0v-4A2.5 2.5 0 008 1zm-4 6.5a.75.75 0 011.5 0 2.5 2.5 0 005 0 .75.75 0 011.5 0A4 4 0 019 11.373V13h2a.75.75 0 010 1.5H5a.75.75 0 010-1.5h2v-1.627A4 4 0 014 7.5z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
               {/* Image upload */}
               <button
                 onClick={() => fileInputRef.current?.click()}

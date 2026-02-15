@@ -4,6 +4,7 @@ import { sendToSession } from "../ws.js";
 import { api } from "../api.js";
 import { CLAUDE_MODES, CODEX_MODES } from "../utils/backends.js";
 import type { ModeOption } from "../utils/backends.js";
+import { DictationWaveform } from "./DictationWaveform.js";
 
 let idCounter = 0;
 
@@ -12,6 +13,24 @@ interface ImageAttachment {
   base64: string;
   mediaType: string;
 }
+
+interface CommandItem {
+  name: string;
+  type: "command" | "skill";
+}
+
+type ClaudeModeValue = "sandbox-auto" | "sandbox-ask" | "bypassPermissions" | "plan" | "yolo";
+
+interface ClaudeModeMenuOption {
+  value: ClaudeModeValue;
+  label: string;
+  disabled?: boolean;
+  hint?: string;
+  danger?: boolean;
+}
+
+const LOCAL_COMMANDS: CommandItem[] = [{ name: "context", type: "command" }];
+const DICTATION_BAR_COUNT = 56;
 
 function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
@@ -26,31 +45,116 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: stri
   });
 }
 
-interface CommandItem {
-  name: string;
-  type: "command" | "skill";
+function supportsDictationInBrowser(): boolean {
+  return typeof navigator !== "undefined"
+    && !!navigator.mediaDevices?.getUserMedia
+    && typeof MediaRecorder !== "undefined";
 }
 
-const LOCAL_COMMANDS: CommandItem[] = [{ name: "context", type: "command" }];
+function formatDuration(totalSeconds: number): string {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function mergeComposerText(existing: string, extra: string): string {
+  const left = existing.trim();
+  const right = extra.trim();
+  if (!left) return right;
+  if (!right) return left;
+  return `${left} ${right}`;
+}
+
+function toPermissionMode(mode: string): string {
+  if (mode === "sandbox-auto") return "bypassPermissions";
+  if (mode === "sandbox-ask") return "default";
+  if (mode === "yolo") return "bypassPermissions";
+  return mode;
+}
+
+function defaultWaveform(): number[] {
+  return Array.from({ length: DICTATION_BAR_COUNT }, (_, i) => 0.01 + ((i % 5) * 0.005));
+}
 
 export function Composer({ sessionId }: { sessionId: string }) {
   const [text, setText] = useState("");
   const [images, setImages] = useState<ImageAttachment[]>([]);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const [dictationStatus, setDictationStatus] = useState<"idle" | "recording" | "transcribing">("idle");
+  const [dictationLevels, setDictationLevels] = useState<number[]>(() => defaultWaveform());
+  const [dictationSeconds, setDictationSeconds] = useState(0);
+  const [showStopDictationHint, setShowStopDictationHint] = useState(false);
+  const [queueSendAfterTranscription, setQueueSendAfterTranscription] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const waveformRafRef = useRef<number | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const queuedSendRef = useRef(false);
   const cliConnected = useStore((s) => s.cliConnected);
   const sessionData = useStore((s) => s.sessions.get(sessionId));
-  const previousMode = useStore((s) => s.previousPermissionMode.get(sessionId) || "acceptEdits");
+  const sdkSession = useStore((s) => s.sdkSessions.find((sdk) => sdk.sessionId === sessionId));
+  const previousMode = useStore((s) => s.previousPermissionMode.get(sessionId) || "bypassPermissions");
 
   const isConnected = cliConnected.get(sessionId) ?? false;
-  const currentMode = sessionData?.permissionMode || "acceptEdits";
-  const isPlan = currentMode === "plan";
+  const currentPermissionMode = sessionData?.permissionMode || "acceptEdits";
+  const isPlan = currentPermissionMode === "plan";
   const isCodex = sessionData?.backend_type === "codex";
   const modes: ModeOption[] = isCodex ? CODEX_MODES : CLAUDE_MODES;
-  const modeLabel = modes.find((m) => m.value === currentMode)?.label?.toLowerCase() || currentMode;
+  const sandboxMode = sdkSession?.sandboxMode ?? "off";
+  const isYoloSession = sdkSession?.dangerouslySkipPermissions === true;
+  const isRecording = dictationStatus === "recording";
+  const isTranscribing = dictationStatus === "transcribing";
+  const canUseMic = supportsDictationInBrowser();
+
+  const claudeDisplayMode: ClaudeModeValue = useMemo(() => {
+    if (isPlan) return "plan";
+    if (isYoloSession) return "yolo";
+    if (sandboxMode === "auto-allow") return "sandbox-auto";
+    if (sandboxMode === "ask-first") return "sandbox-ask";
+    if (currentPermissionMode === "bypassPermissions" && previousMode === "yolo") return "yolo";
+    if (currentPermissionMode === "bypassPermissions") return "bypassPermissions";
+    return "sandbox-ask";
+  }, [currentPermissionMode, isPlan, isYoloSession, previousMode, sandboxMode]);
+
+  const modeLabel = useMemo(() => {
+    if (isCodex) {
+      return modes.find((m) => m.value === currentPermissionMode)?.label?.toLowerCase() || currentPermissionMode;
+    }
+    return modes.find((m) => m.value === claudeDisplayMode)?.label?.toLowerCase() || claudeDisplayMode;
+  }, [claudeDisplayMode, currentPermissionMode, isCodex, modes]);
+
+  const claudeModeOptions = useMemo<ClaudeModeMenuOption[]>(() => {
+    const sandboxUnavailable = sandboxMode === "off";
+    return [
+      {
+        value: "sandbox-auto",
+        label: "Sandbox",
+        disabled: sandboxUnavailable,
+        hint: sandboxUnavailable ? "Start a new conversation in Sandbox mode" : undefined,
+      },
+      {
+        value: "sandbox-ask",
+        label: "Sandbox (Ask)",
+        disabled: sandboxUnavailable,
+        hint: sandboxUnavailable ? "Start a new conversation in Sandbox mode" : undefined,
+      },
+      { value: "bypassPermissions", label: "Agent" },
+      { value: "plan", label: "Plan" },
+      {
+        value: "yolo",
+        label: "YOLO",
+        danger: true,
+      },
+    ];
+  }, [sandboxMode]);
 
   // Build command list from session data
   const allCommands = useMemo<CommandItem[]>(() => {
@@ -76,7 +180,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
   // Filter commands based on what the user typed after /
   const filteredCommands = useMemo(() => {
     if (!slashMenuOpen) return [];
-    // Extract the slash query: text starts with / and we match the part after /
     const match = text.match(/^\/(\S*)$/);
     if (!match) return [];
     const query = match[1].toLowerCase();
@@ -84,7 +187,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return allCommands.filter((cmd) => cmd.name.toLowerCase().includes(query));
   }, [text, slashMenuOpen, allCommands]);
 
-  // Open/close menu based on text
+  useEffect(() => {
+    queuedSendRef.current = queueSendAfterTranscription;
+  }, [queueSendAfterTranscription]);
+
+  // Open/close slash menu based on text
   useEffect(() => {
     const shouldOpen = text.startsWith("/") && /^\/\S*$/.test(text) && allCommands.length > 0;
     if (shouldOpen && !slashMenuOpen) {
@@ -95,14 +202,14 @@ export function Composer({ sessionId }: { sessionId: string }) {
     }
   }, [text, allCommands.length, slashMenuOpen]);
 
-  // Keep selected index in bounds
+  // Keep selected slash item in bounds
   useEffect(() => {
     if (slashMenuIndex >= filteredCommands.length) {
       setSlashMenuIndex(Math.max(0, filteredCommands.length - 1));
     }
   }, [filteredCommands.length, slashMenuIndex]);
 
-  // Scroll selected item into view
+  // Scroll selected slash command into view
   useEffect(() => {
     if (!menuRef.current || !slashMenuOpen) return;
     const items = menuRef.current.querySelectorAll("[data-cmd-index]");
@@ -112,11 +219,67 @@ export function Composer({ sessionId }: { sessionId: string }) {
     }
   }, [slashMenuIndex, slashMenuOpen]);
 
+  // Close mode dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+        setShowModeDropdown(false);
+      }
+    }
+    document.addEventListener("pointerdown", handleClick);
+    return () => document.removeEventListener("pointerdown", handleClick);
+  }, []);
+
+  // Dictation timer
+  useEffect(() => {
+    if (!isRecording) return;
+    const timer = window.setInterval(() => {
+      setDictationSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isRecording]);
+
+  // Auto-hide stop hint bubble
+  useEffect(() => {
+    if (!showStopDictationHint || !isRecording) return;
+    const timeout = window.setTimeout(() => setShowStopDictationHint(false), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [isRecording, showStopDictationHint]);
+
+  // Cleanup dictation resources on unmount
+  useEffect(() => {
+    return () => {
+      if (waveformRafRef.current !== null) {
+        window.cancelAnimationFrame(waveformRafRef.current);
+        waveformRafRef.current = null;
+      }
+      mediaRecorderRef.current = null;
+      analyserRef.current = null;
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+    };
+  }, []);
+
   const selectCommand = useCallback((cmd: CommandItem) => {
     setText(`/${cmd.name} `);
     setSlashMenuOpen(false);
     textareaRef.current?.focus();
   }, []);
+
+  function appendSystemMessage(content: string) {
+    useStore.getState().appendMessage(sessionId, {
+      id: `sys-${Date.now()}-${++idCounter}`,
+      role: "system",
+      content,
+      timestamp: Date.now(),
+    });
+  }
 
   function appendContextMessage() {
     const used = sessionData?.context_used_percent;
@@ -126,27 +289,32 @@ export function Composer({ sessionId }: { sessionId: string }) {
       ? "Context usage for this session is not available yet."
       : `Context usage for this session: ${usedClamped}% used (${remainingClamped}% remaining).`;
 
-    useStore.getState().appendMessage(sessionId, {
-      id: `sys-${Date.now()}-${++idCounter}`,
-      role: "system",
-      content,
-      timestamp: Date.now(),
-    });
+    appendSystemMessage(content);
   }
 
-  function runLocalContextCommand() {
-    appendContextMessage();
+  function syncTextareaHeight() {
+    if (!textareaRef.current) return;
+    textareaRef.current.style.height = "auto";
+    textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + "px";
+  }
+
+  function resetComposerInput() {
     setText("");
     setImages([]);
     setSlashMenuOpen(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
+  }
+
+  function runLocalContextCommand() {
+    appendContextMessage();
+    resetComposerInput();
     textareaRef.current?.focus();
   }
 
-  function handleSend() {
-    const msg = text.trim();
+  function sendUserMessage(rawMessage: string) {
+    const msg = rawMessage.trim();
     if (!msg || !isConnected) return;
 
     const command = msg.startsWith("/") ? msg.slice(1).split(/\s+/)[0]?.toLowerCase() : "";
@@ -170,14 +338,196 @@ export function Composer({ sessionId }: { sessionId: string }) {
       timestamp: Date.now(),
     });
 
-    setText("");
-    setImages([]);
-    setSlashMenuOpen(false);
-
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
+    resetComposerInput();
     textareaRef.current?.focus();
+  }
+
+  function cleanupDictationResources() {
+    if (waveformRafRef.current !== null) {
+      window.cancelAnimationFrame(waveformRafRef.current);
+      waveformRafRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+    analyserRef.current = null;
+    recordedChunksRef.current = [];
+    setDictationLevels(defaultWaveform());
+  }
+
+  async function startDictation() {
+    if (!isConnected || isRecording || isTranscribing) return;
+    if (!canUseMic) {
+      appendSystemMessage("Microphone dictation is not supported by this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      recordedChunksRef.current = [];
+
+      const recorderOptions: MediaRecorderOptions = {};
+      if (typeof MediaRecorder.isTypeSupported === "function") {
+        const preferredMimeTypes = [
+          "audio/webm;codecs=opus",
+          "audio/webm",
+          "audio/mp4",
+          "audio/ogg;codecs=opus",
+        ];
+        const selectedMimeType = preferredMimeTypes.find((type) => MediaRecorder.isTypeSupported(type));
+        if (selectedMimeType) recorderOptions.mimeType = selectedMimeType;
+      }
+      const recorder = Object.keys(recorderOptions).length > 0
+        ? new MediaRecorder(stream, recorderOptions)
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioContextCtor) {
+        const audioContext = new AudioContextCtor();
+        audioContextRef.current = audioContext;
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+
+        const timeData = new Uint8Array(analyser.fftSize);
+        let lastPaint = 0;
+        const tick = (timestamp: number) => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteTimeDomainData(timeData);
+          let sumSquares = 0;
+          for (let i = 0; i < timeData.length; i += 1) {
+            const centered = (timeData[i] - 128) / 128;
+            sumSquares += centered * centered;
+          }
+          const rms = Math.sqrt(sumSquares / timeData.length);
+          const normalized = Math.min(1, Math.max(0.02, rms * 7));
+
+          if (timestamp - lastPaint >= 45) {
+            setDictationLevels((prev) => {
+              const next = prev.slice(1);
+              next.push(normalized);
+              return next;
+            });
+            lastPaint = timestamp;
+          }
+
+          waveformRafRef.current = window.requestAnimationFrame(tick);
+        };
+        waveformRafRef.current = window.requestAnimationFrame(tick);
+      }
+
+      recorder.start(140);
+      setDictationSeconds(0);
+      setQueueSendAfterTranscription(false);
+      queuedSendRef.current = false;
+      setShowStopDictationHint(true);
+      setDictationStatus("recording");
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      appendSystemMessage(`Unable to start microphone dictation: ${reason}`);
+      cleanupDictationResources();
+      setDictationStatus("idle");
+    }
+  }
+
+  function stopDictationCapture(): Promise<Blob | null> {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return Promise.resolve(null);
+
+    setShowStopDictationHint(false);
+    setDictationStatus("transcribing");
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        const mimeType = recorder.mimeType || "audio/webm";
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        cleanupDictationResources();
+        resolve(blob.size > 0 ? blob : null);
+      };
+      recorder.addEventListener("stop", finish, { once: true });
+      try {
+        recorder.stop();
+      } catch {
+        finish();
+      }
+    });
+  }
+
+  async function transcribeAndApply(blob: Blob, forceSend: boolean) {
+    try {
+      const preferredLanguage = typeof navigator !== "undefined" && navigator.language
+        ? navigator.language.split("-")[0]
+        : undefined;
+      const result = await api.transcribeAudio(blob, preferredLanguage);
+      const transcript = (result.text || "").trim();
+
+      if (!transcript) {
+        appendSystemMessage("Dictation captured audio, but no speech was recognized.");
+        return;
+      }
+
+      const merged = mergeComposerText(text, transcript);
+      setText(merged);
+      window.requestAnimationFrame(() => syncTextareaHeight());
+
+      if (forceSend || queuedSendRef.current) {
+        sendUserMessage(merged);
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      appendSystemMessage(`Dictation failed: ${reason}`);
+    } finally {
+      setDictationStatus("idle");
+      setQueueSendAfterTranscription(false);
+      queuedSendRef.current = false;
+      textareaRef.current?.focus();
+    }
+  }
+
+  async function stopDictationAndTranscribe(forceSend: boolean) {
+    const blob = await stopDictationCapture();
+    if (!blob) {
+      setDictationStatus("idle");
+      if (forceSend || queuedSendRef.current) {
+        appendSystemMessage("Dictation stopped without captured audio.");
+      }
+      setQueueSendAfterTranscription(false);
+      queuedSendRef.current = false;
+      return;
+    }
+    await transcribeAndApply(blob, forceSend);
+  }
+
+  function handleSend() {
+    if (isRecording) {
+      void stopDictationAndTranscribe(true);
+      return;
+    }
+    if (isTranscribing) {
+      setQueueSendAfterTranscription(true);
+      queuedSendRef.current = true;
+      return;
+    }
+    sendUserMessage(text);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -271,15 +621,36 @@ export function Composer({ sessionId }: { sessionId: string }) {
     }
   }
 
+  function applyClaudeMode(mode: ClaudeModeValue) {
+    if (!isConnected) return;
+    const store = useStore.getState();
+
+    if ((mode === "sandbox-auto" || mode === "sandbox-ask") && sandboxMode === "off") {
+      appendSystemMessage("Sandbox mode can only be enabled when starting a new conversation.");
+      return;
+    }
+    if (mode === "plan") {
+      store.setPreviousPermissionMode(sessionId, claudeDisplayMode);
+      sendToSession(sessionId, { type: "set_permission_mode", mode: "plan" });
+      store.updateSession(sessionId, { permissionMode: "plan" });
+      return;
+    }
+
+    const nextPermissionMode = toPermissionMode(mode);
+    sendToSession(sessionId, { type: "set_permission_mode", mode: nextPermissionMode });
+    store.updateSession(sessionId, { permissionMode: nextPermissionMode });
+    store.setPreviousPermissionMode(sessionId, mode);
+  }
+
   function toggleMode() {
     if (!isConnected || isCodex) return;
     const store = useStore.getState();
     if (!isPlan) {
-      store.setPreviousPermissionMode(sessionId, currentMode);
+      store.setPreviousPermissionMode(sessionId, claudeDisplayMode);
       sendToSession(sessionId, { type: "set_permission_mode", mode: "plan" });
       store.updateSession(sessionId, { permissionMode: "plan" });
     } else {
-      const restoreMode = previousMode || "acceptEdits";
+      const restoreMode = toPermissionMode(previousMode || "bypassPermissions");
       sendToSession(sessionId, { type: "set_permission_mode", mode: restoreMode });
       store.updateSession(sessionId, { permissionMode: restoreMode });
     }
@@ -287,7 +658,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
   const sessionStatus = useStore((s) => s.sessionStatus);
   const isRunning = sessionStatus.get(sessionId) === "running";
-  const canSend = text.trim().length > 0 && isConnected;
+  const canSend = isConnected && (isRecording || isTranscribing || text.trim().length > 0);
 
   return (
     <div className="shrink-0 border-t border-cc-border bg-cc-card px-2 sm:px-4 py-2 sm:py-3">
@@ -427,36 +798,145 @@ export function Composer({ sessionId }: { sessionId: string }) {
           )}
 
           {/* Bottom toolbar */}
-          <div className="flex items-center justify-between px-2.5 pb-2.5">
-            {/* Left: mode indicator */}
-            <button
-              onClick={toggleMode}
-              disabled={!isConnected || isCodex}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium transition-all select-none ${
-                !isConnected || isCodex
-                  ? "opacity-30 cursor-not-allowed text-cc-muted"
-                  : isPlan
-                  ? "text-cc-primary hover:bg-cc-primary/10 cursor-pointer"
-                  : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
-              }`}
-              title={isCodex ? "Mode is fixed for Codex sessions" : "Toggle mode (Shift+Tab)"}
-            >
-              {isPlan ? (
-                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                  <rect x="3" y="3" width="3.5" height="10" rx="0.75" />
-                  <rect x="9.5" y="3" width="3.5" height="10" rx="0.75" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                  <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                  <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </svg>
-              )}
-              <span>{modeLabel}</span>
-            </button>
+          <div className="flex items-center justify-between px-2.5 pb-2.5 gap-2">
+            {/* Left: mode dropdown */}
+            <div className="relative" ref={modeDropdownRef}>
+              <button
+                onClick={() => !isCodex && isConnected && setShowModeDropdown((open) => !open)}
+                disabled={!isConnected || isCodex}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium transition-all select-none ${
+                  !isConnected || isCodex
+                    ? "opacity-30 cursor-not-allowed text-cc-muted"
+                    : isPlan
+                    ? "text-cc-primary hover:bg-cc-primary/10 cursor-pointer"
+                    : claudeDisplayMode === "yolo"
+                      ? "text-red-500 hover:bg-red-500/10 cursor-pointer"
+                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                }`}
+                title={isCodex ? "Mode is fixed for Codex sessions" : "Choose mode (Shift+Tab toggles Plan)"}
+              >
+                {isPlan ? (
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                    <rect x="3" y="3" width="3.5" height="10" rx="0.75" />
+                    <rect x="9.5" y="3" width="3.5" height="10" rx="0.75" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                    <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  </svg>
+                )}
+                <span>{modeLabel}</span>
+                {!isCodex && (
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-60">
+                    <path d="M4 6l4 4 4-4" />
+                  </svg>
+                )}
+              </button>
 
-            {/* Right: image + send/stop */}
-            <div className="flex items-center gap-1">
+              {showModeDropdown && !isCodex && (
+                <div className="absolute left-0 bottom-full mb-1 w-52 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-20 py-1 overflow-hidden">
+                  {claudeModeOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        if (opt.disabled) return;
+                        applyClaudeMode(opt.value);
+                        setShowModeDropdown(false);
+                      }}
+                      disabled={opt.disabled}
+                      className={`w-full px-3 py-2 text-xs text-left transition-colors flex items-start gap-2 ${
+                        opt.disabled
+                          ? "text-cc-muted/50 cursor-not-allowed"
+                          : opt.value === claudeDisplayMode
+                            ? "text-cc-primary font-medium bg-cc-hover/60"
+                            : opt.danger
+                              ? "text-red-500 hover:bg-red-500/10 cursor-pointer"
+                              : "text-cc-fg hover:bg-cc-hover cursor-pointer"
+                      }`}
+                    >
+                      <span className="mt-[2px] shrink-0">
+                        {opt.value.startsWith("sandbox-") ? (
+                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-green-600 dark:text-green-400">
+                            <path d="M8 1a3.5 3.5 0 00-3.5 3.5V6H3a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V7a1 1 0 00-1-1h-1.5V4.5A3.5 3.5 0 008 1zm2 5V4.5a2 2 0 10-4 0V6h4z" />
+                          </svg>
+                        ) : opt.value === "yolo" ? (
+                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-red-500">
+                            <path d="M8.982 1.566a1.13 1.13 0 00-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 01-1.1 0L7.1 5.995A.905.905 0 018 5zm.002 6a1 1 0 110 2 1 1 0 010-2z" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                            <path d="M2 4h12M2 8h8M2 12h10" strokeLinecap="round" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block">{opt.label}</span>
+                        {opt.hint && <span className="block mt-0.5 text-[10px] text-cc-muted">{opt.hint}</span>}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Right: mic + image + send/stop */}
+            <div className="flex items-center gap-1 min-w-0">
+              <div className="relative w-8 h-8 shrink-0">
+                {isRecording || isTranscribing ? (
+                  <div className="absolute right-0 top-0 flex items-center gap-2 h-8 rounded-full border border-cc-border bg-cc-card pl-2 pr-1 min-w-[165px] sm:min-w-[240px] z-10">
+                    <DictationWaveform levels={dictationLevels} active={isRecording} />
+                    <span className="text-[12px] tabular-nums text-cc-muted shrink-0">
+                      {isTranscribing ? "..." : formatDuration(dictationSeconds)}
+                    </span>
+                    <div className="relative">
+                      {isRecording && showStopDictationHint && (
+                        <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 rounded-full border border-cc-border bg-cc-card text-[11px] text-cc-fg whitespace-nowrap shadow-sm">
+                          Stop dictation
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (isRecording) void stopDictationAndTranscribe(false);
+                        }}
+                        disabled={!isRecording}
+                        className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
+                          isRecording
+                            ? "bg-cc-hover hover:bg-cc-hover/80 text-cc-fg cursor-pointer"
+                            : "bg-cc-hover text-cc-muted cursor-not-allowed"
+                        }`}
+                        title={isRecording ? "Stop dictation" : "Transcribing"}
+                      >
+                        {isRecording ? (
+                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                            <rect x="3" y="3" width="10" height="10" rx="1.2" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 animate-spin">
+                            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" strokeDasharray="30" strokeDashoffset="10" strokeLinecap="round" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => void startDictation()}
+                    disabled={!isConnected || !canUseMic}
+                    className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
+                      isConnected && canUseMic
+                        ? "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                        : "text-cc-muted opacity-30 cursor-not-allowed"
+                    }`}
+                    title={canUseMic ? "Start dictation" : "Microphone not available"}
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                      <path d="M8 1a2.5 2.5 0 00-2.5 2.5v4a2.5 2.5 0 105 0v-4A2.5 2.5 0 008 1zm-4 6.5a.75.75 0 011.5 0 2.5 2.5 0 005 0 .75.75 0 011.5 0A4 4 0 019 11.373V13h2a.75.75 0 010 1.5H5a.75.75 0 010-1.5h2v-1.627A4 4 0 014 7.5z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!isConnected}
