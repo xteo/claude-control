@@ -260,6 +260,28 @@ function sendBrowserNotification(title: string, body: string, tag: string) {
 
 let idCounter = 0;
 let clientMsgCounter = 0;
+
+function formatProviderError(errors: string[]): string {
+  const message = errors.join(", ");
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("credit balance is too low") ||
+    lower.includes("insufficient credits") ||
+    lower.includes("insufficient balance")
+  ) {
+    return [
+      message,
+      "This is a provider-side billing/risk check rather than a local app issue.",
+      "Even when wallet credits appear available, this can be caused by:",
+      "- active API key/user mismatch in the running companion process",
+      "- per-key/project budget caps or throttling",
+      "- model/provider entitlement or payment method restrictions",
+      "Verify the companion's environment variables and relaunch the session with the expected credentials.",
+    ].join("\n");
+  }
+  return `Error: ${message}`;
+}
+
 function nextId(): string {
   return `msg-${Date.now()}-${++idCounter}`;
 }
@@ -484,7 +506,7 @@ function handleParsedMessage(
         store.appendMessage(sessionId, {
           id: nextId(),
           role: "system",
-          content: `Error: ${r.errors.join(", ")}`,
+          content: formatProviderError(r.errors),
           timestamp: Date.now(),
         });
       }
@@ -631,7 +653,7 @@ function handleParsedMessage(
             chatMessages.push({
               id: `hist-error-${i}`,
               role: "system",
-              content: `Error: ${r.errors.join(", ")}`,
+              content: formatProviderError(r.errors),
               timestamp: Date.now(),
             });
           }

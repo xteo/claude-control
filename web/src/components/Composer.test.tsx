@@ -260,6 +260,7 @@ describe("Composer slash menu", () => {
     fireEvent.change(textarea, { target: { value: "/" } });
 
     // Commands should appear in the menu
+    expect(screen.getByText("/context")).toBeTruthy();
     expect(screen.getByText("/help")).toBeTruthy();
     expect(screen.getByText("/clear")).toBeTruthy();
     expect(screen.getByText("/commit")).toBeTruthy();
@@ -295,8 +296,28 @@ describe("Composer slash menu", () => {
 
     fireEvent.change(textarea, { target: { value: "/" } });
 
-    // No command items should appear
+    // Always include local commands
+    expect(screen.getByText("/context")).toBeTruthy();
     expect(screen.queryByText("/help")).toBeNull();
+  });
+
+  it("slash command: /context posts local context status instead of sending", () => {
+    setupMockStore({
+      session: {
+        context_used_percent: 37,
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "/context" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(mockSendToSession).not.toHaveBeenCalled();
+    expect(mockAppendMessage).toHaveBeenCalledWith("s1", expect.objectContaining({
+      role: "system",
+      content: expect.stringContaining("37% used"),
+    }));
   });
 
   it("slash menu shows command types", () => {
@@ -312,7 +333,7 @@ describe("Composer slash menu", () => {
     fireEvent.change(textarea, { target: { value: "/" } });
 
     // Each command should display its type
-    expect(screen.getByText("command")).toBeTruthy();
+    expect(screen.getAllByText("command").length).toBeGreaterThan(1);
     expect(screen.getByText("skill")).toBeTruthy();
   });
 });

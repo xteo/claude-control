@@ -49,6 +49,18 @@ export function TopBar() {
 
   const isConnected = currentSessionId ? (cliConnected.get(currentSessionId) ?? false) : false;
   const status = currentSessionId ? (sessionStatus.get(currentSessionId) ?? null) : null;
+  const session = useStore((s) =>
+    currentSessionId ? s.sessions.get(currentSessionId) : null
+  );
+  const contextUsedPercent = session?.context_used_percent;
+  const contextRemainingPercent = contextUsedPercent === undefined ? null : Math.max(0, Math.round(100 - contextUsedPercent));
+  const contextTextClass = contextUsedPercent === undefined
+    ? "text-cc-muted"
+    : contextUsedPercent >= 85
+      ? "text-cc-error"
+      : contextUsedPercent >= 65
+        ? "text-cc-warning"
+        : "text-cc-muted";
   const sessionName = currentSessionId
     ? (sessionNames?.get(currentSessionId) ||
       sdkSessions.find((s) => s.sessionId === currentSessionId)?.name ||
@@ -96,6 +108,19 @@ export function TopBar() {
       {/* Right side */}
       {currentSessionId && isSessionView && (
         <div className="flex items-center gap-2 sm:gap-3 text-[12px] text-cc-muted">
+          {typeof contextUsedPercent === "number" && (
+            <span className={`inline-flex items-center gap-1 ${contextTextClass}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                contextUsedPercent >= 85
+                  ? "bg-cc-error"
+                  : contextUsedPercent >= 65
+                    ? "bg-cc-warning"
+                    : "bg-cc-success"
+              }`} />
+              <span>Context {contextRemainingPercent}% left</span>
+            </span>
+          )}
+
           {status === "compacting" && (
             <span className="text-cc-warning font-medium animate-pulse">Compacting...</span>
           )}

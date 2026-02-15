@@ -31,10 +31,10 @@ export function Sidebar() {
   const pendingPermissions = useStore((s) => s.pendingPermissions);
   const collapsedProjects = useStore((s) => s.collapsedProjects);
   const toggleProjectCollapse = useStore((s) => s.toggleProjectCollapse);
-  const teamsBySession = useStore((s) => s.teamsBySession);
-  const collapsedTeams = useStore((s) => s.collapsedTeams);
+  const teamsBySession = useStore((s) => s.teamsBySession ?? new Map());
+  const collapsedTeams = useStore((s) => s.collapsedTeams ?? new Set());
   const toggleTeamCollapse = useStore((s) => s.toggleTeamCollapse);
-  const sessionTasks = useStore((s) => s.sessionTasks);
+  const sessionTasks = useStore((s) => s.sessionTasks ?? new Map());
   const isSettingsPage = hash === "#/settings";
   const isTerminalPage = hash === "#/terminal";
   const isEnvironmentsPage = hash === "#/environments";

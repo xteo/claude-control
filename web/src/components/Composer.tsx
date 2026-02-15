@@ -31,6 +31,8 @@ interface CommandItem {
   type: "command" | "skill";
 }
 
+const LOCAL_COMMANDS: CommandItem[] = [{ name: "context", type: "command" }];
+
 export function Composer({ sessionId }: { sessionId: string }) {
   const [text, setText] = useState("");
   const [images, setImages] = useState<ImageAttachment[]>([]);
@@ -52,15 +54,20 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
   // Build command list from session data
   const allCommands = useMemo<CommandItem[]>(() => {
-    const cmds: CommandItem[] = [];
+    const cmds: CommandItem[] = [...LOCAL_COMMANDS];
+    const seen = new Set<string>(cmds.map((cmd) => cmd.name));
     if (sessionData?.slash_commands) {
       for (const cmd of sessionData.slash_commands) {
+        if (seen.has(cmd)) continue;
         cmds.push({ name: cmd, type: "command" });
+        seen.add(cmd);
       }
     }
     if (sessionData?.skills) {
       for (const skill of sessionData.skills) {
+        if (seen.has(skill)) continue;
         cmds.push({ name: skill, type: "skill" });
+        seen.add(skill);
       }
     }
     return cmds;
@@ -111,9 +118,42 @@ export function Composer({ sessionId }: { sessionId: string }) {
     textareaRef.current?.focus();
   }, []);
 
+  function appendContextMessage() {
+    const used = sessionData?.context_used_percent;
+    const usedClamped = typeof used === "number" ? Math.max(0, Math.min(100, Math.round(used))) : null;
+    const remainingClamped = usedClamped === null ? null : Math.max(0, 100 - usedClamped);
+    const content = usedClamped === null
+      ? "Context usage for this session is not available yet."
+      : `Context usage for this session: ${usedClamped}% used (${remainingClamped}% remaining).`;
+
+    useStore.getState().appendMessage(sessionId, {
+      id: `sys-${Date.now()}-${++idCounter}`,
+      role: "system",
+      content,
+      timestamp: Date.now(),
+    });
+  }
+
+  function runLocalContextCommand() {
+    appendContextMessage();
+    setText("");
+    setImages([]);
+    setSlashMenuOpen(false);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+    textareaRef.current?.focus();
+  }
+
   function handleSend() {
     const msg = text.trim();
     if (!msg || !isConnected) return;
+
+    const command = msg.startsWith("/") ? msg.slice(1).split(/\s+/)[0]?.toLowerCase() : "";
+    if (command === "context") {
+      runLocalContextCommand();
+      return;
+    }
 
     sendToSession(sessionId, {
       type: "user_message",
@@ -160,6 +200,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
       }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
+        const selected = filteredCommands[slashMenuIndex];
+        if (selected?.name === "context") {
+          runLocalContextCommand();
+          return;
+        }
         selectCommand(filteredCommands[slashMenuIndex]);
         return;
       }

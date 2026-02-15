@@ -18,7 +18,7 @@ interface MockStoreState {
   setTaskPanelOpen: ReturnType<typeof vi.fn>;
   activeTab: "chat" | "diff";
   setActiveTab: ReturnType<typeof vi.fn>;
-  sessions: Map<string, { cwd?: string }>;
+  sessions: Map<string, { cwd?: string; context_used_percent?: number }>;
   sdkSessions: { sessionId: string; cwd?: string }[];
   changedFiles: Map<string, Set<string>>;
 }
@@ -77,5 +77,14 @@ describe("TopBar", () => {
 
     render(<TopBar />);
     expect(screen.queryByText("1")).not.toBeInTheDocument();
+  });
+
+  it("shows context usage on the top bar when available", () => {
+    resetStore({
+      sessions: new Map([["s1", { cwd: "/repo", context_used_percent: 72 }]]),
+    });
+
+    render(<TopBar />);
+    expect(screen.getByText("Context 28% left")).toBeInTheDocument();
   });
 });

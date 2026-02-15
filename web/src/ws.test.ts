@@ -518,6 +518,35 @@ describe("handleMessage: result", () => {
     expect(msgs[0].role).toBe("system");
     expect(msgs[0].content).toBe("Error: Something went wrong, Another error");
   });
+
+  it("adds extra guidance for credit/billing errors in result", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        errors: ["credit balance is too low"],
+        duration_ms: 100,
+        duration_api_ms: 50,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "u3",
+        session_id: "s1",
+      },
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].role).toBe("system");
+    expect(msgs[0].content).toContain("provider-side billing/risk check");
+    expect(msgs[0].content).toContain("active API key/user mismatch");
+  });
 });
 
 // ===========================================================================
@@ -695,6 +724,40 @@ describe("handleMessage: message_history", () => {
     expect(msgs).toHaveLength(1);
     expect(msgs[0].role).toBe("system");
     expect(msgs[0].content).toBe("Error: Timed out");
+  });
+
+  it("adds extra guidance for billing errors from history", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        {
+          type: "result",
+          data: {
+            type: "result",
+            subtype: "error_during_execution",
+            is_error: true,
+            errors: ["Insufficient Credits for request"],
+            duration_ms: 100,
+            duration_api_ms: 50,
+            num_turns: 1,
+            total_cost_usd: 0,
+            stop_reason: null,
+            usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+            uuid: "u4",
+            session_id: "s1",
+          },
+        },
+      ],
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].role).toBe("system");
+    expect(msgs[0].content).toContain("provider-side billing/risk check");
+    expect(msgs[0].content).toContain("model/provider entitlement");
   });
 
   it("assigns stable IDs to error results based on history index", () => {
